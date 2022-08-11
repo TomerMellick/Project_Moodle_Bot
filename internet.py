@@ -1,15 +1,20 @@
-from typing import Union
 from urllib.parse import urlencode, quote
+from collections import namedtuple
 from datetime import datetime
+from typing import Union, List
 import requests
+import html
 import json
 import re
+
+Grade = namedtuple('Grade', 'name units grade')
 
 
 class Internet:
     """
     This class communicate with orbit and moodle.
     """
+
     def __init__(self):
         self.session = requests.session()
         self.moodle = False
@@ -32,15 +37,17 @@ class Internet:
         if orbit_login_website.status_code != 200:
             return False
 
-        hidden_input_regex = r"<input type=\"hidden\" name=\"(.*?)\" id=\".*?\" value=\"(.*?)\" \/>"
-        login_data = dict(re.findall(hidden_input_regex, orbit_login_website.text))
-        login_data['edtUsername'] = username
-        login_data['edtPassword'] = password
-        login_data['__LASTFOCUS'] = ''
-        login_data['__EVENTTARGET'] = ''
-        login_data['__EVENTARGUMENT'] = ''
-        login_data['btnLogin'] = 'כניסה'
-
+        login_data = Internet.__get_hidden_inputs(orbit_login_website.text)
+        login_data.update(
+            {
+                'edtUsername': username,
+                'edtPassword': password,
+                '__LASTFOCUS': '',
+                '__EVENTTARGET': '',
+                '__EVENTARGUMENT': '',
+                'btnLogin': 'כניסה'
+            }
+        )
         orbit_website = self.__post('https://live.or-bit.net/hadassah/Login.aspx', payload_data=login_data)
 
         if orbit_website.status_code != 200:
@@ -109,6 +116,46 @@ class Internet:
 
         return data[0]['data']['events']
 
+    def get_grades(self, username: str = None, password: str = None) -> Union[List[Grade], None]:
+        if not self.connect_orbit(username, password):
+            return None
+        website = self.__get('https://live.or-bit.net/hadassah/StudentGradesList.aspx')
+        if website.status_code != 200:
+            return None
+
+        pages_regex = 'javascript:__doPostBack\\(&#39;ctl00\\' \
+                      '$ContentPlaceHolder1\\$gvGradesList&#39;,&#39;Page\\$([1-9])&#39;\\)'
+        last_page = len(re.findall(pages_regex, website.text)) + 1
+        page = 1
+        grades = []
+        while page <= last_page:
+            grades += Internet.__get_grade_from_page(website.text)
+            page += 1
+            if page <= last_page:
+                inputs = Internet.__get_hidden_inputs(website.text)
+                inputs['ctl00$cmbActiveYear'] = '2022'
+                inputs['__EVENTARGUMENT'] = f'Page${page}'
+                inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
+                print(inputs)
+                website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx',payload_data=inputs)
+        return grades
+
+    @staticmethod
+    def __get_grade_from_page(page: str) -> List[Grade]:
+        subjects_str = re.findall('<tr id="ContentPlaceHolder1_gvGradesList" class="GridRow">(.*?)</tr>',
+                                  page,
+                                  re.DOTALL)
+        final_res = []
+        for subject in subjects_str:
+            data = re.findall('<td.*?>(.*?)</td>', subject, re.DOTALL)
+            final_res.append(
+                Grade(
+                    name=html.unescape(data[1]),
+                    units=int(data[4]),
+                    grade=re.findall('>([0-9א-ת]*?)</span>', data[6])[0])
+            )
+        return final_res
+
     def __get(self, url: str, payload: dict = None) -> requests.Response:
         if payload is not None:
             payload = '&' + urlencode(payload, quote_via=quote)
@@ -125,3 +172,8 @@ class Internet:
         else:
             get_payload = ''
         return self.session.post(f"{url}{get_payload}", data=payload_data, json=payload_json)
+
+    @staticmethod
+    def __get_hidden_inputs(text: str) -> dict:
+        hidden_input_regex = r"<input type=\"hidden\" name=\"(.*?)\" id=\".*?\" value=\"(.*?)\" \/>"
+        return dict(re.findall(hidden_input_regex, text))
