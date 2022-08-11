@@ -1,7 +1,7 @@
 import requests
 import re
 import json
-
+import sqlite3
 # getting the bot token from file
 with open("BotToken.txt", "r") as BotToken_f:
     BotToken = BotToken_f.read()
@@ -9,9 +9,9 @@ telegram_url = f"https://api.telegram.org/bot{BotToken}/"
 
 # getting the username and password from database
 with open("DataBase.txt", "r") as DataBase_f:
-    user_info = DataBase_f.read()
-    user_info = json.loads(user_info)
-user_id =  #TODO getting from telegream
+    user_info = json.load(DataBase_f)
+
+user_id = "4" #TODO getting from telegream
 user_name = user_info[user_id]["user_name"]
 user_password = user_info[user_id]["password"]
 
