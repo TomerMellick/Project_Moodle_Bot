@@ -1,9 +1,8 @@
-from enum import Enum, auto
-
-from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters
-
+from datetime import datetime
 from internet import Internet
+from enum import Enum, auto
+from telegram import Update
 from src import database
 
 users = {}
@@ -44,6 +43,16 @@ async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text)
 
 
+async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    events = Internet(data[1], data[2]).get_unfinished_events()
+    grades_text = '\n----------\n'.join(f'{event.name}\n'
+                                        f'{event.course_name}\n'
+                                        f'{datetime.fromtimestamp(event.end_time)}\n'
+                                        f'{event.url}' for event in events)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text)
+
+
 login_info_handler = ConversationHandler(
     entry_points=[CommandHandler("start", start), CommandHandler('update_user', update_user)],
     states={
@@ -58,6 +67,7 @@ def start_telegram_bot():
     application = ApplicationBuilder().token(open('BotToken.txt').readline()).build()
     application.add_handler(login_info_handler)
     application.add_handler(CommandHandler('get_grades', get_grades))
+    application.add_handler(CommandHandler('get_unfinished_events', get_unfinished_events))
     application.run_polling()
     return application.bot
 
