@@ -117,6 +117,12 @@ class Internet:
         return data[0]['data']['events']
 
     def get_grades(self, username: str = None, password: str = None) -> Union[List[Grade], None]:
+        """
+        get all orbits grades and connect the orbit with username and password if not connected yet
+        :param username: orbit username (may be None if already connected)
+        :param password: orbit password (may be None if already connected)
+        :return: the grades of the user
+        """
         if not self.connect_orbit(username, password):
             return None
         website = self.__get('https://live.or-bit.net/hadassah/StudentGradesList.aspx')
