@@ -53,8 +53,14 @@ login_info_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", lambda a, b: 0)],
 )
 
-if __name__ == '__main__':
+
+def start_telegram_bot():
     application = ApplicationBuilder().token(open('BotToken.txt').readline()).build()
     application.add_handler(login_info_handler)
-    application.add_handler(CommandHandler('get_grades',get_grades))
+    application.add_handler(CommandHandler('get_grades', get_grades))
     application.run_polling()
+    return application.bot
+
+
+if __name__ == '__main__':
+    start_telegram_bot()
