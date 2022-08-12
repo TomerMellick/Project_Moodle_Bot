@@ -15,18 +15,18 @@ class Internet:
     This class communicate with orbit and moodle.
     """
 
-    def __init__(self):
+    def __init__(self, username:str, password:str):
         self.session = requests.session()
         self.moodle = False
         self.orbit = False
+        self.username = username
+        self.password = password
 
-    def connect_orbit(self, username: str, password: str) -> bool:
+    def connect_orbit(self) -> bool:
         """
         connect to orbit (this is the required to connect the moodle)
         if this object already connected the method do nothing (and return True)
 
-        :param username: orbit username (id number)
-        :param password: orbit password
         :return: is the method successfully connect to orbit
         """
         if self.orbit:
@@ -40,8 +40,8 @@ class Internet:
         login_data = Internet.__get_hidden_inputs(orbit_login_website.text)
         login_data.update(
             {
-                'edtUsername': username,
-                'edtPassword': password,
+                'edtUsername': self.username,
+                'edtPassword': self.password,
                 '__LASTFOCUS': '',
                 '__EVENTTARGET': '',
                 '__EVENTARGUMENT': '',
@@ -55,19 +55,17 @@ class Internet:
         self.orbit = True
         return True
 
-    def connect_moodle(self, username: str = None, password: str = None) -> bool:
+    def connect_moodle(self) -> bool:
         """
         connect to moodle
         if this object already connected the method do nothing (and return True)
         if this object didnt connect to the orbit yet, connect with the username and password to the orbit
 
-        :param username: orbit username (id number)
-        :param password: orbit password
         :return: is the method successfully connect to moodle
         """
         if self.moodle:
             return True
-        if not self.connect_orbit(username, password):
+        if not self.connect_orbit():
             return False
         moodle_session = self.__get("https://live.or-bit.net/hadassah/Handlers/Moodle.ashx")
         redirect_url = re.search("URL='(.*?)'", moodle_session.text)[1]
@@ -76,17 +74,15 @@ class Internet:
         self.moodle = True
         return True
 
-    def get_unfinished_events(self, username: str = None, password: str = None):
+    def get_unfinished_events(self):
         """
         get undefined events
         if this object didnt connect to the orbit yet, connect with the username and password to the orbit
         if this object didnt connect to the moodle yet, connect to the moodle
 
-        :param username: orbit username (id number) (optional if not connected to orbit)
-        :param password: orbit password (optional if not connected to orbit)
         :return: the last undefined events or None if something go wrong
         """
-        if not self.connect_moodle(username, password):
+        if not self.connect_moodle():
             return False
 
         moodle_website = self.__get('https://mowgli.hac.ac.il/my/')
@@ -116,14 +112,14 @@ class Internet:
 
         return data[0]['data']['events']
 
-    def get_grades(self, username: str = None, password: str = None) -> Union[List[Grade], None]:
+    def get_grades(self) -> Union[List[Grade], None]:
         """
         get all orbits grades and connect the orbit with username and password if not connected yet
         :param username: orbit username (may be None if already connected)
         :param password: orbit password (may be None if already connected)
         :return: the grades of the user
         """
-        if not self.connect_orbit(username, password):
+        if not self.connect_orbit():
             return None
         website = self.__get('https://live.or-bit.net/hadassah/StudentGradesList.aspx')
         if website.status_code != 200:
@@ -142,7 +138,6 @@ class Internet:
                 inputs['ctl00$cmbActiveYear'] = '2022'
                 inputs['__EVENTARGUMENT'] = f'Page${page}'
                 inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
-                print(inputs)
                 website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx',payload_data=inputs)
         return grades
 
