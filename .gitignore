@@ -1,5 +1,5 @@
 .idea
 venv
 __pycache__
-BotToken.txt
-database.db
+src/BotToken.txt
+src/database.db
