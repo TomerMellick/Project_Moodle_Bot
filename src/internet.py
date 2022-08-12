@@ -8,6 +8,7 @@ import json
 import re
 
 Grade = namedtuple('Grade', 'name units grade')
+Event = namedtuple('event', 'name course_name course_id end_time url')
 
 
 class Internet:
@@ -15,7 +16,7 @@ class Internet:
     This class communicate with orbit and moodle.
     """
 
-    def __init__(self, username:str, password:str):
+    def __init__(self, username: str, password: str):
         self.session = requests.session()
         self.moodle = False
         self.orbit = False
@@ -74,7 +75,7 @@ class Internet:
         self.moodle = True
         return True
 
-    def get_unfinished_events(self):
+    def get_unfinished_events(self) -> List[Event]:
         """
         get undefined events
         if this object didnt connect to the orbit yet, connect with the username and password to the orbit
@@ -110,7 +111,11 @@ class Internet:
         if data[0]['error']:
             return False
 
-        return data[0]['data']['events']
+        return [Event(name=event['name'],
+                      course_name=event['course']['shortname'],
+                      course_id=event['course']['id'],
+                      end_time=event['timesort'],
+                      url=event['url']) for event in data[0]['data']['events']]
 
     def get_grades(self) -> Union[List[Grade], None]:
         """
@@ -138,7 +143,7 @@ class Internet:
                 inputs['ctl00$cmbActiveYear'] = '2022'
                 inputs['__EVENTARGUMENT'] = f'Page${page}'
                 inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
-                website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx',payload_data=inputs)
+                website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx', payload_data=inputs)
         return grades
 
     @staticmethod
