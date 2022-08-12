@@ -3,6 +3,7 @@ import sqlite3
 DATABASE = 'database.db'
 TABLE = 'users'
 
+
 # def user_login(user_id: str) -> tuple:
 #     con = sqlite3.connect(DATABASE)
 #     curses = con.cursor()
@@ -21,11 +22,9 @@ def add_user(user_id: str, user_name: str, password: str):
     :param password:
     :return:
     """
-    con = sqlite3.connect(DATABASE)
-    curses = con.cursor()
-    curses.execute(f'''INSERT INTO {TABLE} VALUES ({user_id}), {user_name}, {password}''')
-    con.commit()
-    con.close()
+    with sqlite3.connect(DATABASE) as con:
+        curses = con.cursor()
+        curses.execute(f'INSERT INTO {TABLE} VALUES(?,?,?)', (user_id, user_name, password))
 
 
 def delete_user(user_id: str):
@@ -36,8 +35,7 @@ def delete_user(user_id: str):
     """
     with sqlite3.connect(DATABASE) as con:
         handle = con.cursor()
-        handle.execute(f'''DELETE FROM {TABLE} WHERE user_id = {user_id}''')
-        con.commit()
+        handle.execute(f'DELETE FROM {TABLE} WHERE user_id = ?', (user_id,))
 
 
 def get_user(user: str) -> tuple:
@@ -48,15 +46,14 @@ def get_user(user: str) -> tuple:
     """
     with sqlite3.connect(DATABASE) as con:
         handle = con.cursor()
-        user_row = handle.execute(f'''SELECT * FROM {TABLE} WHERE user_id={user} OR user_name={user}''')
+        user_row = handle.execute(f'SELECT * FROM {TABLE} WHERE user_id=? OR user_name=?', (user, user))
         return user_row.fetchone()
 
 
 def get_all_user():
     """
-        :return: all the TABLE as sqlite3 object
+    :return: all the TABLE as sqlite3 object
     """
     with sqlite3.connect(DATABASE) as con:
         handle = con.cursor()
-        return handle.execute(f'''SELECT * FROM {TABLE} ''')
-
+        return handle.execute(f'SELECT * FROM {TABLE}')
