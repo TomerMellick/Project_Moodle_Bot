@@ -3,6 +3,7 @@ from enum import Enum, auto
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters
 
+from internet import Internet
 from src import database
 
 users = {}
@@ -31,9 +32,16 @@ async def get_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    database.add_user(str(update.effective_chat.id), users[update.effective_chat.id], update.message.text)
+    database.add_user(update.effective_chat.id, users[update.effective_chat.id], update.message.text)
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Thanks")
     return ConversationHandler.END
+
+
+async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    grades = Internet(data[1], data[2]).get_grades()
+    grades_text = '\n'.join(f'{grade.name} - {grade.units} - {grade.grade}' for grade in grades if grade.grade != '')
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text)
 
 
 login_info_handler = ConversationHandler(
@@ -48,4 +56,5 @@ login_info_handler = ConversationHandler(
 if __name__ == '__main__':
     application = ApplicationBuilder().token(open('BotToken.txt').readline()).build()
     application.add_handler(login_info_handler)
+    application.add_handler(CommandHandler('get_grades',get_grades))
     application.run_polling()
