@@ -19,6 +19,7 @@ async def enter_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="must enter username and password before using this command")
 
+
 async def handle_warnings(warning: List[Internet.Warning], update: Update, context: ContextTypes.DEFAULT_TYPE):
     if Internet.Warning.CHANGE_PASSWORD in warning:
         await context.bot.send_message(chat_id=update.effective_chat.id,
@@ -75,8 +76,19 @@ async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_error(grades.error, update, context)
         return
     grades = grades.result
+
+    sum_grades = 0
+    num_of_units = 0
+    for grade in grades:
+        if grade.grade.isdigit():
+            sum_grades += int(grade.grade) * grade.units
+            num_of_units += grade.units
+    avg = None
+    if num_of_units > 0:
+        avg = round(sum_grades/num_of_units, 2)
+
     grades_text = '\n'.join(f'{grade.name} - {grade.units} - {grade.grade}' for grade in grades if grade.grade != '')
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text + f'\n\n ממוצע: {avg}')
 
 
 async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
