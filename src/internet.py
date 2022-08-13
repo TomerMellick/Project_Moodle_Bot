@@ -1,3 +1,4 @@
+from enum import Enum, auto
 from urllib.parse import urlencode, quote
 from collections import namedtuple
 from datetime import datetime
@@ -9,6 +10,7 @@ import re
 
 Grade = namedtuple('Grade', 'name units grade')
 Event = namedtuple('event', 'name course_name course_id end_time url')
+Res = namedtuple('Result', 'result warnings error')
 
 
 class Internet:
@@ -18,25 +20,36 @@ class Internet:
 
     def __init__(self, username: str, password: str):
         self.session = requests.session()
-        self.moodle = False
-        self.orbit = False
+        self.moodle_res = Res(False, [], None)
+        self.orbit_res = Res(False, [], None)
         self.username = username
         self.password = password
 
-    def connect_orbit(self) -> bool:
+    class Error(Enum):
+        ORBIT_DOWN = 0b001
+        MOODLE_DOWN = 0b010
+        WRONG_PASSWORD = 0b100
+        BOT_ERROR = 0b1000
+        WEBSITE_DOWN = ORBIT_DOWN | MOODLE_DOWN
+
+    class Warning(Enum):
+        CHANGE_PASSWORD = auto()
+
+    def connect_orbit(self) -> Res:
         """
         connect to orbit (this is the required to connect the moodle)
         if this object already connected the method do nothing (and return True)
 
         :return: is the method successfully connect to orbit
         """
-        if self.orbit:
-            return True
+        if self.orbit_res.result:
+            return self.orbit_res
 
         orbit_login_website = self.__get('https://live.or-bit.net/hadassah/Login.aspx')
 
         if orbit_login_website.status_code != 200:
-            return False
+            self.orbit_res = Res(False, [], Internet.Error.ORBIT_DOWN)
+            return self.orbit_res
 
         login_data = Internet.__get_hidden_inputs(orbit_login_website.text)
         login_data.update(
@@ -51,12 +64,17 @@ class Internet:
         )
         orbit_website = self.__post('https://live.or-bit.net/hadassah/Login.aspx', payload_data=login_data)
 
-        if orbit_website.status_code != 200:
-            return False
-        self.orbit = True
-        return True
+        if orbit_website.status_code != 200 or orbit_website.url == 'https://live.or-bit.net/hadassah/Login.aspx':
+            self.orbit_res = Res(False, [], Internet.Error.WRONG_PASSWORD)
+            return self.orbit_res
 
-    def connect_moodle(self) -> bool:
+        if orbit_website.url == 'https://live.or-bit.net/hadassah/ChangePassword.aspx':
+            self.orbit_res.warnings.append(Internet.Warning.CHANGE_PASSWORD)
+
+        self.orbit_res = Res(True, self.orbit_res.warnings, None)
+        return self.orbit_res
+
+    def connect_moodle(self) -> Res:
         """
         connect to moodle
         if this object already connected the method do nothing (and return True)
@@ -64,18 +82,35 @@ class Internet:
 
         :return: is the method successfully connect to moodle
         """
-        if self.moodle:
-            return True
-        if not self.connect_orbit():
-            return False
-        moodle_session = self.__get("https://live.or-bit.net/hadassah/Handlers/Moodle.ashx")
-        redirect_url = re.search("URL='(.*?)'", moodle_session.text)[1]
-        if self.__get(redirect_url).status_code != 200:
-            return False
-        self.moodle = True
-        return True
+        if self.moodle_res.result:
+            return self.moodle_res
 
-    def get_unfinished_events(self) -> List[Event]:
+        res, warnings, error = self.connect_orbit()
+
+        warnings = warnings[:]
+
+        if not res:
+            self.moodle_res = Res(False, warnings, error)
+            return self.moodle_res
+
+        moodle_session = self.__get("https://live.or-bit.net/hadassah/Handlers/Moodle.ashx")
+        if moodle_session.status_code != 200:
+            self.moodle_res = Res(False, warnings, Internet.Error.MOODLE_DOWN)
+            return self.moodle_res
+
+        reg = re.search("URL='(.*?)'", moodle_session.text)
+        if not reg:
+            self.moodle_res = Res(False, warnings, Internet.Error.BOT_ERROR)
+
+        redirect_url = reg[1]
+        moodle_website = self.__get(redirect_url)
+        if moodle_website.status_code != 200 or moodle_website.url != 'https://mowgli.hac.ac.il/my/':
+            self.moodle_res = Res(False, warnings, Internet.Error.MOODLE_DOWN)
+            return self.moodle_res
+        self.moodle_res = Res(True, warnings, None)
+        return self.moodle_res
+
+    def get_unfinished_events(self) -> Res:
         """
         get undefined events
         if this object didnt connect to the orbit yet, connect with the username and password to the orbit
@@ -83,15 +118,23 @@ class Internet:
 
         :return: the last undefined events or None if something go wrong
         """
-        if not self.connect_moodle():
-            return False
+        res, warnings, error = self.connect_moodle()
+
+        warnings = warnings[:]
+
+        if not res:
+            return Res(None, warnings, error)
 
         moodle_website = self.__get('https://mowgli.hac.ac.il/my/')
 
         if moodle_website.status_code != 200:
-            return False
+            return Res(None, warnings, Internet.Error.MOODLE_DOWN)
 
-        moodle_session_key = re.search('"sesskey":"(.*?)"', moodle_website.text)[1]
+        reg = re.search('"sesskey":"(.*?)"', moodle_website.text)
+        if not reg:
+            return Res(None, warnings, Internet.Error.BOT_ERROR)
+
+        moodle_session_key = reg[1]
 
         url = 'https://mowgli.hac.ac.il/lib/ajax/service.php'
         get_payload = {'sesskey': moodle_session_key,
@@ -106,29 +149,29 @@ class Internet:
                          }]
         unfinished_events = self.__post(url, payload_json=post_payload, get_payload=get_payload)
         if unfinished_events.status_code != 200:
-            return False
+            return Res(None, warnings, Internet.Error.BOT_ERROR)
         data = json.loads(unfinished_events.text)
         if data[0]['error']:
-            return False
+            return Res(None, warnings, Internet.Error.BOT_ERROR)
 
-        return [Event(name=event['name'],
-                      course_name=event['course']['shortname'],
-                      course_id=event['course']['id'],
-                      end_time=event['timesort'],
-                      url=event['url']) for event in data[0]['data']['events']]
+        return Res([Event(name=event['name'],
+                          course_name=event['course']['shortname'],
+                          course_id=event['course']['id'],
+                          end_time=event['timesort'],
+                          url=event['url']) for event in data[0]['data']['events']], warnings, None)
 
-    def get_grades(self) -> Union[List[Grade], None]:
+    def get_grades(self) -> Res:
         """
         get all orbits grades and connect the orbit with username and password if not connected yet
-        :param username: orbit username (may be None if already connected)
-        :param password: orbit password (may be None if already connected)
         :return: the grades of the user
         """
-        if not self.connect_orbit():
-            return None
+        res, warnings, error = self.connect_orbit()
+        if not res:
+            return Res(False, warnings, error)
+
         website = self.__get('https://live.or-bit.net/hadassah/StudentGradesList.aspx')
         if website.status_code != 200:
-            return None
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
 
         pages_regex = 'javascript:__doPostBack\\(&#39;ctl00\\' \
                       '$ContentPlaceHolder1\\$gvGradesList&#39;,&#39;Page\\$([1-9])&#39;\\)'
@@ -144,7 +187,8 @@ class Internet:
                 inputs['__EVENTARGUMENT'] = f'Page${page}'
                 inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
                 website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx', payload_data=inputs)
-        return grades
+
+        return Res(grades, warnings, None)
 
     @staticmethod
     def __get_grade_from_page(page: str) -> List[Grade]:
