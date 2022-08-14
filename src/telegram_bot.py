@@ -59,7 +59,8 @@ async def get_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    database.add_user(update.effective_chat.id, users[update.effective_chat.id], update.message.text)
+    database.add_user(update.effective_chat.id, users.pop(update.effective_chat.id), update.message.text)
+    await context.bot.deleteMessage(update.effective_chat.id,update.message.id)
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Thanks")
     return ConversationHandler.END
 
@@ -85,7 +86,7 @@ async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
             num_of_units += grade.units
     avg = None
     if num_of_units > 0:
-        avg = round(sum_grades/num_of_units, 2)
+        avg = round(sum_grades / num_of_units, 2)
 
     grades_text = '\n'.join(f'{grade.name} - {grade.units} - {grade.grade}' for grade in grades if grade.grade != '')
     await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text + f'\n\n ממוצע: {avg}')
@@ -103,13 +104,13 @@ async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TY
         await handle_error(events.error, update, context)
         return
     events = events.result
-    grades_text = '\n----------\n'.join(f'{event.name}\n'
+    events_text = '\n----------\n'.join(f'{event.name}\n'
                                         f'{event.course_name}\n'
                                         f'{datetime.fromtimestamp(event.end_time)}\n'
                                         f'{event.url}'
                                         for event in events)
 
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text)
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=events_text)
 
 
 login_info_handler = ConversationHandler(
