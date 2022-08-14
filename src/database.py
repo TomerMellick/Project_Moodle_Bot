@@ -18,7 +18,7 @@ def add_user(user_id: int, user_name: str, password: str):
 
     with sqlite3.connect(DATABASE) as con:
         curses = con.cursor()
-        curses.execute(f'INSERT INTO {TABLE} VALUES(?,?,?)', (user_id, user_name, password))
+        curses.execute(f'INSERT INTO {TABLE} VALUES(?,?,?,0)', (user_id, user_name, password))
 
 
 def delete_user(user_id: int):
@@ -51,3 +51,9 @@ def get_all_user():
     with sqlite3.connect(DATABASE) as con:
         handle = con.cursor()
         return handle.execute(f'SELECT * FROM {TABLE}')
+
+
+def update_schedule(user_id: int, schedule_code: int):
+    with sqlite3.connect(DATABASE) as con:
+        curses = con.cursor()
+        curses.execute(f'UPDATE {TABLE} SET schedule_code =? WHERE user_id=? ', (schedule_code, user_id))

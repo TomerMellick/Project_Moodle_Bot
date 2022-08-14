@@ -1,16 +1,17 @@
 from typing import List
 
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters, \
+    CallbackQueryHandler
 from datetime import datetime
 from internet import Internet
 from enum import Enum, auto
-from telegram import Update
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from src import database
 
 users = {}
 
 
-class GET_USER(Enum):
+class GetUser(Enum):
     GET_USERNAME = auto()
     GET_PASSWORD = auto()
 
@@ -44,23 +45,23 @@ async def handle_error(error: Internet.Error, update: Update, context: ContextTy
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="Hello and welcome to our bot.\nPlease enter your orbit username")
-    return GET_USER.GET_USERNAME
+    return GetUser.GET_USERNAME
 
 
 async def update_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Please enter your orbit username")
-    return GET_USER.GET_USERNAME
+    return GetUser.GET_USERNAME
 
 
 async def get_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users[update.effective_chat.id] = update.message.text
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Please enter your orbit password")
-    return GET_USER.GET_PASSWORD
+    return GetUser.GET_PASSWORD
 
 
 async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     database.add_user(update.effective_chat.id, users.pop(update.effective_chat.id), update.message.text)
-    await context.bot.deleteMessage(update.effective_chat.id,update.message.id)
+    await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Thanks")
     return ConversationHandler.END
 
@@ -104,11 +105,11 @@ async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TY
         await handle_error(events.error, update, context)
         return
     events = events.result
-    events_text = '\n----------\n'.join(f'{event.name}\n'
-                                        f'{event.course_name}\n'
-                                        f'{datetime.fromtimestamp(event.end_time)}\n'
-                                        f'{event.url}'
-                                        for event in events)
+    events_text = '\n---------------------------------------------\n'.join(f'{event.name}\n'
+                                                                           f'{event.course_name}\n'
+                                                                           f'{datetime.fromtimestamp(event.end_time)}\n'
+                                                                           f'{event.url}'
+                                                                           for event in events)
 
     await context.bot.send_message(chat_id=update.effective_chat.id, text=events_text)
 
@@ -116,11 +117,32 @@ async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TY
 login_info_handler = ConversationHandler(
     entry_points=[CommandHandler("start", start), CommandHandler('update_user', update_user)],
     states={
-        GET_USER.GET_USERNAME: [MessageHandler(filters.TEXT, get_username)],
-        GET_USER.GET_PASSWORD: [MessageHandler(filters.TEXT | filters.COMMAND, get_password)],
+        GetUser.GET_USERNAME: [MessageHandler(filters.TEXT, get_username)],
+        GetUser.GET_PASSWORD: [MessageHandler(filters.TEXT | filters.COMMAND, get_password)],
     },
     fallbacks=[CommandHandler("cancel", lambda a, b: 0)],
 )
+
+
+async def update_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("once a day", callback_data='1'),
+                                      InlineKeyboardButton("once a week", callback_data='2'),
+                                      InlineKeyboardButton("never", callback_data='0')]])
+
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text="on what schedule would you like to get you unfinished events?",
+                                   reply_markup=keyboard)
+    return 1
+
+
+async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    database.update_schedule(update.effective_chat.id, int(update.callback_query.data))
+    return ConversationHandler.END
+
+
+schedule_conversation = ConversationHandler(entry_points=[CommandHandler("update_schedule", update_schedule)], states={
+    1: [CallbackQueryHandler(call_back_schedule_button)]
+}, fallbacks=[])
 
 
 def start_telegram_bot():
@@ -128,6 +150,7 @@ def start_telegram_bot():
     application.add_handler(login_info_handler)
     application.add_handler(CommandHandler('get_grades', get_grades))
     application.add_handler(CommandHandler('get_unfinished_events', get_unfinished_events))
+    application.add_handler(schedule_conversation)
     application.run_polling()
     return application.bot
 
