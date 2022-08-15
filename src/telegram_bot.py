@@ -148,14 +148,14 @@ async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 async def call_back_document_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = database.get_user_by_id(update.effective_chat.id)
     if not data:
-        await enter_data(update, context)
+        await enter_data(context.bot, update.effective_chat.id)
         return
     doc = Document(int(update.callback_query.data[len('document_'):]))
     doc_value = Internet(data[1], data[2]).get_document(doc)
     if doc_value.warnings:
-        await handle_warnings(doc_value.warnings, update, context)
+        await handle_warnings(doc_value.warnings,context.bot, update.effective_chat.id)
     if doc_value.error:
-        await handle_error(doc_value.error, update, context)
+        await handle_error(doc_value.error,context.bot, update.effective_chat.id)
         return
     doc_value = doc_value.result
     await context.bot.send_document(update.effective_chat.id, doc_value, filename=documents_file_name[doc])
