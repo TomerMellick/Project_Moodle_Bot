@@ -13,6 +13,36 @@ Event = namedtuple('event', 'name course_name course_id end_time url')
 Res = namedtuple('Result', 'result warnings error')
 
 
+class Document(Enum):
+    STUDENT_PERMIT_E = 0
+    STUDENT_PERMIT = 1
+    TUITION_FEE_APPROVAL = 2
+    REGISTRATION_CONFIRMATION = 3
+    GRADES_SHEET_E = 4
+    GRADES_SHEET = 5
+    ENGLISH_LEVEL = 13
+
+
+documents_heb_name = {
+    Document.STUDENT_PERMIT_E: 'v12 אישור לימודים באנגלית לסטודנט',
+    Document.STUDENT_PERMIT: 'V45- אישור לימודים מפורט',
+    Document.TUITION_FEE_APPROVAL: 'אישור גובה שכר לימוד',
+    Document.REGISTRATION_CONFIRMATION: 'אישור הרשמה',
+    Document.GRADES_SHEET_E: 'גליון ציונים באנגלית',
+    Document.GRADES_SHEET: 'גליון ציונים',
+    Document.ENGLISH_LEVEL: 'רמת אנגלית'
+}
+documents_file_name = {
+    Document.STUDENT_PERMIT_E: 'student_permit_english.pdf',
+    Document.STUDENT_PERMIT: 'student_permit.pdf',
+    Document.TUITION_FEE_APPROVAL: 'tuition_fee_approval.pdf',
+    Document.REGISTRATION_CONFIRMATION: 'registration_confirmation.pdf',
+    Document.GRADES_SHEET_E: 'english_grades_sheet.pdf',
+    Document.GRADES_SHEET: 'grades_sheet.pdf',
+    Document.ENGLISH_LEVEL: 'english_level.pdf'
+}
+
+
 class Internet:
     """
     This class communicate with orbit and moodle.
@@ -164,6 +194,22 @@ class Internet:
             data = list(filter(lambda event: event.end_time <= last_date, data))
         return Res(data, warnings, None)
 
+    def get_document(self, document: Document):
+        res, warnings, error = self.connect_orbit()
+        if not res:
+            return Res(False, warnings, error)
+
+        website = self.__get('https://live.or-bit.net/hadassah/DocumentGenerationPage.aspx')
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+        hidden_inputs = self.__get_hidden_inputs(website.text)
+        hidden_inputs['ctl00$ContentPlaceHolder1$cmbDivision'] = 1
+        hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.x'] = 1
+        hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.y'] = 1
+
+        return self.__post('https://live.or-bit.net/hadassah/DocumentGenerationPage.aspx',
+                           payload_data=hidden_inputs).content
+
     def get_grades(self) -> Res:
         """
         get all orbits grades and connect the orbit with username and password if not connected yet
@@ -187,9 +233,8 @@ class Internet:
             page += 1
             if page <= last_page:
                 inputs = Internet.__get_hidden_inputs(website.text)
-                inputs['ctl00$cmbActiveYear'] = '2022'
-                inputs['__EVENTARGUMENT'] = f'Page${page}'
                 inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
+                inputs['__EVENTARGUMENT'] = f'Page${page}'
                 website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx', payload_data=inputs)
 
         return Res(grades, warnings, None)
@@ -230,4 +275,10 @@ class Internet:
     @staticmethod
     def __get_hidden_inputs(text: str) -> dict:
         hidden_input_regex = r"<input type=\"hidden\" name=\"(.*?)\" id=\".*?\" value=\"(.*?)\" \/>"
-        return dict(re.findall(hidden_input_regex, text))
+        hidden_inputs = re.findall(hidden_input_regex, text)
+        year_regex = '<select name="ctl00$cmbActiveYear".*?<option selected="selected" value="([0-9]*?)"'
+        year = re.findall(year_regex, text)
+        if year:
+            year = year[0]
+            hidden_inputs.append(('ctl00$cmbActiveYear', year))
+        return dict(hidden_inputs)
