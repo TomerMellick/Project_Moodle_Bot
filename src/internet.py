@@ -110,7 +110,7 @@ class Internet:
         self.moodle_res = Res(True, warnings, None)
         return self.moodle_res
 
-    def get_unfinished_events(self) -> Res:
+    def get_unfinished_events(self, last_date: datetime = None) -> Res:
         """
         get undefined events
         if this object didnt connect to the orbit yet, connect with the username and password to the orbit
@@ -153,12 +153,16 @@ class Internet:
         data = json.loads(unfinished_events.text)
         if data[0]['error']:
             return Res(None, warnings, Internet.Error.BOT_ERROR)
-
-        return Res([Event(name=event['name'],
-                          course_name=event['course']['shortname'],
-                          course_id=event['course']['id'],
-                          end_time=event['timesort'],
-                          url=event['url']) for event in data[0]['data']['events']], warnings, None)
+        data = [Event(name=event['name'],
+                      course_name=event['course']['shortname'],
+                      course_id=event['course']['id'],
+                      end_time=datetime.fromtimestamp(event['timesort']),
+                      url=event['url'])
+                for event in data[0]['data']['events']
+                ]
+        if last_date:
+            data = list(filter(lambda event: event.end_time <= last_date, data))
+        return Res(data, warnings, None)
 
     def get_grades(self) -> Res:
         """

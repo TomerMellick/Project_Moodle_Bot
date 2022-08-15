@@ -2,7 +2,6 @@ from typing import List
 
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters, \
     CallbackQueryHandler
-from datetime import datetime
 from internet import Internet
 from enum import Enum, auto
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -107,7 +106,7 @@ async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TY
     events = events.result
     events_text = '\n---------------------------------------------\n'.join(f'{event.name}\n'
                                                                            f'{event.course_name}\n'
-                                                                           f'{datetime.fromtimestamp(event.end_time)}\n'
+                                                                           f'{event.end_time}\n'
                                                                            f'{event.url}'
                                                                            for event in events)
 
