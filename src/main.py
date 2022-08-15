@@ -1,8 +1,11 @@
 import telegram_bot
+import database
+import scheduler
 
 
 def main():
-    telegram_bot.start_telegram_bot()
+    bot = telegram_bot.start_telegram_bot()
+    scheduler.schedule_messages(bot)
 
 
 if __name__ == '__main__':

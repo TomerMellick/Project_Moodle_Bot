@@ -1,5 +1,6 @@
 from typing import List
 
+import telegram
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters, \
     CallbackQueryHandler
 from internet import Internet, Document, documents_heb_name, documents_file_name
@@ -15,30 +16,30 @@ class GetUser(Enum):
     GET_PASSWORD = auto()
 
 
-async def enter_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id,
-                                   text="must enter username and password before using this command")
+async def enter_data(bot: telegram.Bot, chat_id: int):
+    await bot.send_message(chat_id=chat_id,
+                           text="must enter username and password before using this command")
 
 
-async def handle_warnings(warning: List[Internet.Warning], update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_warnings(warning: List[Internet.Warning], bot: telegram.Bot, chat_id: int):
     if Internet.Warning.CHANGE_PASSWORD in warning:
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="warning: please change your username and password at the orbit website")
+        await bot.send_message(chat_id=chat_id,
+                               text="warning: please change your username and password at the orbit website")
 
 
-async def handle_error(error: Internet.Error, update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_error(error: Internet.Error, bot: telegram.Bot, chat_id: int):
     if error is Internet.Error.ORBIT_DOWN:
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="error: orbit website is down")
+        await bot.send_message(chat_id=chat_id,
+                               text="error: orbit website is down")
     elif error is Internet.Error.MOODLE_DOWN:
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="error: moodle website is down")
+        await bot.send_message(chat_id=chat_id,
+                               text="error: moodle website is down")
     elif error is Internet.Error.WRONG_PASSWORD:
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="error: username or password is incorrect")
+        await bot.send_message(chat_id=chat_id,
+                               text="error: username or password is incorrect")
     elif error is Internet.Error.BOT_ERROR:
-        await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="error: the bot did something stupid, please try again later")
+        await bot.send_message(chat_id=chat_id,
+                               text="error: the bot did something stupid, please try again later")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -68,13 +69,13 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = database.get_user_by_id(update.effective_chat.id)
     if not data:
-        await enter_data(update, context)
+        await enter_data(context.bot, update.effective_chat.id)
         return
     grades = Internet(data[1], data[2]).get_grades()
     if grades.warnings:
-        await handle_warnings(grades.warnings, update, context)
+        await handle_warnings(grades.warnings, context.bot, update.effective_chat.id)
     if grades.error:
-        await handle_error(grades.error, update, context)
+        await handle_error(grades.error, context.bot, update.effective_chat.id)
         return
     grades = grades.result
 
@@ -95,13 +96,13 @@ async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = database.get_user_by_id(update.effective_chat.id)
     if not data:
-        await enter_data(update, context)
+        await enter_data(context.bot, update.effective_chat.id)
         return
     events = Internet(data[1], data[2]).get_unfinished_events()
     if events.warnings:
-        await handle_warnings(events.warnings, update, context)
+        await handle_warnings(events.warnings, context.bot, update.effective_chat.id)
     if events.error:
-        await handle_error(events.error, update, context)
+        await handle_error(events.error, context.bot, update.effective_chat.id)
         return
     events = events.result
     events_text = '\n---------------------------------------------\n'.join(f'{event.name}\n'
