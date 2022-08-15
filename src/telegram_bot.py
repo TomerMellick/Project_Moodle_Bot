@@ -2,7 +2,7 @@ from typing import List
 
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters, \
     CallbackQueryHandler
-from internet import Internet
+from internet import Internet, Document, documents_heb_name, documents_file_name
 from enum import Enum, auto
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from src import database
@@ -134,6 +134,32 @@ async def update_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return 1
 
 
+async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(name, callback_data=f'document_{doc_num.value}')] for doc_num, name in
+         documents_heb_name.items()])
+
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text="choose  file to download",
+                                   reply_markup=keyboard)
+
+
+async def call_back_document_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(update, context)
+        return
+    doc = Document(int(update.callback_query.data[len('document_'):]))
+    doc_value = Internet(data[1], data[2]).get_document(doc)
+    if doc_value.warnings:
+        await handle_warnings(doc_value.warnings, update, context)
+    if doc_value.error:
+        await handle_error(doc_value.error, update, context)
+        return
+    doc_value = doc_value.result
+    await context.bot.send_document(update.effective_chat.id, doc_value, filename=documents_file_name[doc])
+
+
 async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     database.update_schedule(update.effective_chat.id, int(update.callback_query.data))
     return ConversationHandler.END
@@ -150,6 +176,9 @@ def start_telegram_bot():
     application.add_handler(CommandHandler('get_grades', get_grades))
     application.add_handler(CommandHandler('get_unfinished_events', get_unfinished_events))
     application.add_handler(schedule_conversation)
+    application.add_handler(CommandHandler('get_document', get_document_buttons))
+    application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
+
     application.run_polling()
     return application.bot
 

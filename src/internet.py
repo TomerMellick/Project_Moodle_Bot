@@ -207,8 +207,8 @@ class Internet:
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.x'] = 1
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.y'] = 1
 
-        return self.__post('https://live.or-bit.net/hadassah/DocumentGenerationPage.aspx',
-                           payload_data=hidden_inputs).content
+        return Res(self.__post('https://live.or-bit.net/hadassah/DocumentGenerationPage.aspx',
+                               payload_data=hidden_inputs).content, warnings, None)
 
     def get_grades(self) -> Res:
         """
