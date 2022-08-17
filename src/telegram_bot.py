@@ -152,17 +152,21 @@ async def call_back_document_button(update: Update, context: ContextTypes.DEFAUL
     doc = Document(int(update.callback_query.data[len('document_'):]))
     doc_value = Internet(data[1], data[2]).get_document(doc)
     if doc_value.warnings:
-        await handle_warnings(doc_value.warnings,context.bot, update.effective_chat.id)
+        await handle_warnings(doc_value.warnings, context.bot, update.effective_chat.id)
     if doc_value.error:
-        await handle_error(doc_value.error,context.bot, update.effective_chat.id)
+        await handle_error(doc_value.error, context.bot, update.effective_chat.id)
         return
     doc_value = doc_value.result
     await context.bot.send_document(update.effective_chat.id, doc_value, filename=documents_file_name[doc])
 
 
 async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    database.update_schedule(update.effective_chat.id, int(update.callback_query.data[len('schedule_')]))
-    await context.bot.send_message(chat_id=update.effective_chat.id,text="weeee")
+    value_int = int(update.callback_query.data[len('schedule_')])
+    value_text = ['never', 'once a day', 'once a week'][value_int]
+    database.update_schedule(update.effective_chat.id, value_int)
+
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=f"schedule message to unfinished events set to `{value_text}`")
 
 
 def start_telegram_bot():
