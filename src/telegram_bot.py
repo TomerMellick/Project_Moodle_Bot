@@ -125,14 +125,13 @@ login_info_handler = ConversationHandler(
 
 
 async def update_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("once a day", callback_data='1'),
-                                      InlineKeyboardButton("once a week", callback_data='2'),
-                                      InlineKeyboardButton("never", callback_data='0')]])
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("once a day", callback_data='schedule_1'),
+                                      InlineKeyboardButton("once a week", callback_data='schedule_2'),
+                                      InlineKeyboardButton("never", callback_data='schedule_0')]])
 
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="on what schedule would you like to get you unfinished events?",
                                    reply_markup=keyboard)
-    return 1
 
 
 async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,23 +161,20 @@ async def call_back_document_button(update: Update, context: ContextTypes.DEFAUL
 
 
 async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    database.update_schedule(update.effective_chat.id, int(update.callback_query.data))
-    return ConversationHandler.END
-
-
-schedule_conversation = ConversationHandler(entry_points=[CommandHandler("update_schedule", update_schedule)], states={
-    1: [CallbackQueryHandler(call_back_schedule_button)]
-}, fallbacks=[])
+    database.update_schedule(update.effective_chat.id, int(update.callback_query.data[len('schedule_')]))
+    await context.bot.send_message(chat_id=update.effective_chat.id,text="weeee")
 
 
 def start_telegram_bot():
     application = ApplicationBuilder().token(open('BotToken.txt').readline()).build()
-    application.add_handler(login_info_handler)
     application.add_handler(CommandHandler('get_grades', get_grades))
     application.add_handler(CommandHandler('get_unfinished_events', get_unfinished_events))
-    application.add_handler(schedule_conversation)
     application.add_handler(CommandHandler('get_document', get_document_buttons))
+    application.add_handler(CommandHandler('update_schedule', update_schedule))
+
+    application.add_handler(login_info_handler)
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
+    application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
 
     application.run_polling()
     return application.bot
