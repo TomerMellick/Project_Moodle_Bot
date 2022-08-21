@@ -1,11 +1,14 @@
 import telegram_bot
-import database
+import multiprocessing
 import scheduler
 
 
 def main():
-    bot = telegram_bot.start_telegram_bot()
-    scheduler.schedule_messages(bot)
+    token = open('BotToken.txt').readline()
+    scheduler_task = multiprocessing.Process(target=scheduler.schedule_messages, args=(token,))
+    scheduler_task.start()
+    telegram_bot.start_telegram_bot(token)
+    scheduler_task.close()
 
 
 if __name__ == '__main__':

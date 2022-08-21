@@ -169,8 +169,8 @@ async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAUL
                                    text=f"schedule message to unfinished events set to `{value_text}`")
 
 
-def start_telegram_bot():
-    application = ApplicationBuilder().token(open('BotToken.txt').readline()).build()
+def start_telegram_bot(token: str):
+    application = ApplicationBuilder().token(token).build()
     application.add_handler(CommandHandler('get_grades', get_grades))
     application.add_handler(CommandHandler('get_unfinished_events', get_unfinished_events))
     application.add_handler(CommandHandler('get_document', get_document_buttons))
@@ -181,8 +181,7 @@ def start_telegram_bot():
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
 
     application.run_polling()
-    return application.bot
 
 
 if __name__ == '__main__':
-    start_telegram_bot()
+    start_telegram_bot(open('BotToken.txt').readline())
