@@ -9,6 +9,7 @@ import json
 import re
 
 Grade = namedtuple('Grade', 'name units grade')
+Exam = namedtuple('Exam', 'name number time_start time_end mark notebook_url room')
 Event = namedtuple('event', 'name course_name course_id end_time url')
 Res = namedtuple('Result', 'result warnings error')
 
@@ -238,6 +239,44 @@ class Internet:
                 website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx', payload_data=inputs)
 
         return Res(grades, warnings, None)
+
+    def get_all_exams(self):
+        res, warnings, error = self.connect_orbit()
+        if not res:
+            return Res(False, warnings, error)
+        website = self.__get('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx')
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
+        website = self.__post('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx', payload_data=inputs)
+        all_exams_text = re.findall(
+            '<tr id="ContentPlaceHolder1_gvStudentAssignmentTermList" class="GridRow">(?:.*?)*</tr>',
+            website.text,
+            re.DOTALL)
+        all_exams_text = [re.findall('<td.*?>(.*?)</td>', exam, re.DOTALL) for exam in all_exams_text]
+
+        all_exams = []
+        for exam in all_exams_text:
+            name = exam[10]
+            time = re.search('>([^>]*?)</span', exam[2]).group(1).split('-')
+            time_start = datetime.strptime(f"{exam[0]} {time[0]}", '%d/%m/%Y %H:%M')
+            time_end = datetime.strptime(f"{exam[0]} {time[1]}", '%d/%m/%Y %H:%M')
+            number = exam[4]
+            mark = None if exam[5] == '&nbsp;' else exam[5]
+            room = exam[7]
+            notebook = re.search(
+                r'ctl00\$ContentPlaceHolder1\$gvStudentAssignmentTermList\$GridRow([0-9]*)\$btnDownload', exam[13])
+            if notebook:
+                notebook = notebook.group(1)
+            all_exams.append(Exam(name=name,
+                                  number=number,
+                                  time_start=time_start,
+                                  time_end=time_end,
+                                  mark=mark,
+                                  notebook_url=notebook,
+                                  room=room))
+        return all_exams
 
     @staticmethod
     def __get_grade_from_page(page: str) -> List[Grade]:
