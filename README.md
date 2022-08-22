@@ -29,5 +29,5 @@ get_grades - get all the grades of the student (include average grade)
 get_unfinished_events - get all unfinished events (from moodle)  
 get_document - get document from the moodle  
 update_schedule - update the schedule  
-get_notebook - get notebook file
-get_upcoming_exams - get all upcoming exams
+get_notebook - get notebook file  
+get_upcoming_exams - get all upcoming exams  
