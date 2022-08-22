@@ -1,8 +1,11 @@
+import datetime
 from typing import List
 
 import telegram
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters, \
     CallbackQueryHandler
+
+import internet
 from internet import Internet, Document, documents_heb_name, documents_file_name
 from enum import Enum, auto
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -120,7 +123,7 @@ login_info_handler = ConversationHandler(
         GetUser.GET_USERNAME: [MessageHandler(filters.TEXT, get_username)],
         GetUser.GET_PASSWORD: [MessageHandler(filters.TEXT | filters.COMMAND, get_password)],
     },
-    fallbacks=[CommandHandler("cancel", lambda a, b: 0)],
+    fallbacks=[],
 )
 
 
@@ -142,6 +145,68 @@ async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="choose  file to download",
                                    reply_markup=keyboard)
+
+
+async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    exams = Internet(data.user_name, data.password).get_all_exams()
+    if exams.warnings:
+        await handle_warnings(exams.warnings, context.bot, update.effective_chat.id)
+    if exams.error:
+        await handle_error(exams.error, context.bot, update.effective_chat.id)
+        return
+    exams = exams.result
+    exams = [exam for exam in exams if exam.notebook_url]
+    exams.sort(key=lambda a: a.time_start, reverse=True)
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(f'{exam.name} {exam.number}', callback_data=f'notebook_{exam.notebook_url}')]
+         for exam in exams])
+
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text="choose notebook to download",
+                                   reply_markup=keyboard)
+
+
+async def get_upcoming_exams(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    exams = Internet(data.user_name, data.password).get_all_exams()
+    if exams.warnings:
+        await handle_warnings(exams.warnings, context.bot, update.effective_chat.id)
+    if exams.error:
+        await handle_error(exams.error, context.bot, update.effective_chat.id)
+        return
+    exams = exams.result
+    now = datetime.datetime.now()
+    exams = [exam for exam in exams if exam.time_start > now]
+    exams.sort(key=lambda a: a.time_start)
+    text = '\n--------\n\n'.join(f'{exam.name} {exam.number}\n{exam.room}\n{exam.time_start}\n{exam.time_end}'
+                                 for exam in exams)
+
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=text)
+
+
+async def call_back_notebook_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    notebook_id = int(update.callback_query.data[len('notebook_'):])
+    in_user = Internet(data.user_name, data.password)
+    notebook = in_user.get_exam_notebook(notebook_id)
+    if notebook.warnings:
+        await handle_warnings(notebook.warnings, context.bot, update.effective_chat.id)
+    if notebook.error:
+        await handle_error(notebook.error, context.bot, update.effective_chat.id)
+        return
+    notebook = notebook.result
+    await context.bot.send_document(update.effective_chat.id, notebook, filename=f'notebook.pdf')
 
 
 async def call_back_document_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,10 +240,13 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('get_unfinished_events', get_unfinished_events))
     application.add_handler(CommandHandler('get_document', get_document_buttons))
     application.add_handler(CommandHandler('update_schedule', update_schedule))
+    application.add_handler(CommandHandler('get_notebook', get_notebook))
+    application.add_handler(CommandHandler('get_upcoming_exams', get_upcoming_exams))
 
     application.add_handler(login_info_handler)
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
+    application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
 
     application.run_polling()
 
