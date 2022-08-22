@@ -207,7 +207,7 @@ class Internet:
         hidden_inputs['ctl00$ContentPlaceHolder1$cmbDivision'] = 1
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.x'] = 1
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.y'] = 1
-
+        print(hidden_inputs)
         return Res(self.__post('https://live.or-bit.net/hadassah/DocumentGenerationPage.aspx',
                                payload_data=hidden_inputs).content, warnings, None)
 
@@ -264,7 +264,7 @@ class Internet:
             time_end = datetime.strptime(f"{exam[0]} {time[1]}", '%d/%m/%Y %H:%M')
             number = exam[4]
             mark = None if exam[5] == '&nbsp;' else exam[5]
-            room = exam[7]
+            room = '' if exam[7] == '&nbsp;' else exam[7]
             notebook = re.search(
                 r'ctl00\$ContentPlaceHolder1\$gvStudentAssignmentTermList\$GridRow([0-9]*)\$btnDownload', exam[13])
             if notebook:
@@ -276,7 +276,27 @@ class Internet:
                                   mark=mark,
                                   notebook_url=notebook,
                                   room=room))
-        return all_exams
+
+        return Res(all_exams, warnings, None)
+
+    def get_exam_notebook(self, number):
+        res, warnings, error = self.connect_orbit()
+        if not res:
+            return Res(False, warnings, error)
+        website = self.__get('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx')
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+
+        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs['ctl00$btnOkAgreement'] = 'אישור'
+        inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
+        website = self.__post('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx', payload_data=inputs)
+        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
+        inputs[f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{number}$btnDownload.x'] = 1
+        inputs[f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{number}$btnDownload.y'] = 1
+        return Res(self.__post('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx',
+                               payload_data=inputs).content, warnings, None)
 
     @staticmethod
     def __get_grade_from_page(page: str) -> List[Grade]:
@@ -314,10 +334,10 @@ class Internet:
     @staticmethod
     def __get_hidden_inputs(text: str) -> dict:
         hidden_input_regex = r"<input type=\"hidden\" name=\"(.*?)\" id=\".*?\" value=\"(.*?)\" \/>"
-        hidden_inputs = re.findall(hidden_input_regex, text)
-        year_regex = '<select name="ctl00$cmbActiveYear".*?<option selected="selected" value="([0-9]*?)"'
-        year = re.findall(year_regex, text)
+        hidden_inputs = re.findall(hidden_input_regex, text, re.DOTALL)
+        year_regex = '<select name="ctl00\\$cmbActiveYear".*?<option selected="selected" value="([0-9]*?)"'
+        year = re.findall(year_regex, text, re.DOTALL)
         if year:
-            year = year[0]
+            year = int(year[0])
             hidden_inputs.append(('ctl00$cmbActiveYear', year))
         return dict(hidden_inputs)
