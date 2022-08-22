@@ -260,6 +260,10 @@ class Internet:
         for exam in all_exams_text:
             name = exam[10]
             time = re.search('>([^>]*?)</span', exam[2]).group(1).split('-')
+            if len(time) < 2:
+                time = ['00:00', '00:00']
+            if exam[0] == '&nbsp;':
+                exam[0] = '01/01/0001'
             time_start = datetime.strptime(f"{exam[0]} {time[0]}", '%d/%m/%Y %H:%M')
             time_end = datetime.strptime(f"{exam[0]} {time[1]}", '%d/%m/%Y %H:%M')
             number = exam[4]
