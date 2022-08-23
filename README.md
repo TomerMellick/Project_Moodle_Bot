@@ -31,3 +31,4 @@ get_document - get document from the moodle
 update_schedule - update the schedule  
 get_notebook - get notebook file  
 get_upcoming_exams - get all upcoming exams  
+register_period - register to a period 

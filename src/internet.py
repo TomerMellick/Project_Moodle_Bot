@@ -9,7 +9,7 @@ import json
 import re
 
 Grade = namedtuple('Grade', 'name units grade')
-Exam = namedtuple('Exam', 'name number time_start time_end mark notebook_url room')
+Exam = namedtuple('Exam', 'name period time_start time_end mark room notebook register cancel_register number')
 Event = namedtuple('event', 'name course_name course_id end_time url')
 Res = namedtuple('Result', 'result warnings error')
 
@@ -257,7 +257,7 @@ class Internet:
         all_exams_text = [re.findall('<td.*?>(.*?)</td>', exam, re.DOTALL) for exam in all_exams_text]
 
         all_exams = []
-        for exam in all_exams_text:
+        for index, exam in enumerate(all_exams_text):
             name = exam[10]
             time = re.search('>([^>]*?)</span', exam[2]).group(1).split('-')
             if len(time) < 2:
@@ -266,20 +266,25 @@ class Internet:
                 exam[0] = '01/01/0001'
             time_start = datetime.strptime(f"{exam[0]} {time[0]}", '%d/%m/%Y %H:%M')
             time_end = datetime.strptime(f"{exam[0]} {time[1]}", '%d/%m/%Y %H:%M')
-            number = exam[4]
+            period = exam[4]
             mark = None if exam[5] == '&nbsp;' else exam[5]
             room = '' if exam[7] == '&nbsp;' else exam[7]
-            notebook = re.search(
-                r'ctl00\$ContentPlaceHolder1\$gvStudentAssignmentTermList\$GridRow([0-9]*)\$btnDownload', exam[13])
-            if notebook:
-                notebook = notebook.group(1)
+            notebook = f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{index}$btnDownload"' in exam[13]
+            register = f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{index}$' \
+                       f'btnRequestExamAssign"' in exam[12]
+            cancel_register = f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{index}' \
+                              f'$btnRequestExamAssignCancel"' in exam[12]
+
             all_exams.append(Exam(name=name,
-                                  number=number,
+                                  period=period,
                                   time_start=time_start,
                                   time_end=time_end,
                                   mark=mark,
-                                  notebook_url=notebook,
-                                  room=room))
+                                  room=room,
+                                  notebook=notebook,
+                                  register=register,
+                                  cancel_register=cancel_register,
+                                  number=index))
 
         return Res(all_exams, warnings, None)
 
@@ -301,6 +306,32 @@ class Internet:
         inputs[f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{number}$btnDownload.y'] = 1
         return Res(self.__post('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx',
                                payload_data=inputs).content, warnings, None)
+
+    def register_exam(self, number, register):
+        res, warnings, error = self.connect_orbit()
+        if not res:
+            return Res(False, warnings, error)
+        website = self.__get('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx')
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+
+        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs['ctl00$btnOkAgreement'] = 'אישור'
+        inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
+        website = self.__post('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx', payload_data=inputs)
+        inputs = Internet.__get_hidden_inputs(website.text)
+
+        btn_data = f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{number}$btnRequestExamAssign'
+        if not register:
+            btn_data += 'Cancel'
+
+        inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
+        inputs[btn_data] = 1
+        website = self.__post('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx', payload_data=inputs)
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+
+        return Res(True, warnings, None)
 
     @staticmethod
     def __get_grade_from_page(page: str) -> List[Grade]:

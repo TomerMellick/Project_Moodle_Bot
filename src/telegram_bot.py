@@ -21,7 +21,8 @@ class GetUser(Enum):
 
 async def enter_data(bot: telegram.Bot, chat_id: int):
     await bot.send_message(chat_id=chat_id,
-                           text="must enter username and password before using this command")
+                           text="must enter username and password before using this command\n"
+                                "/update_user")
 
 
 async def handle_warnings(warning: List[Internet.Warning], bot: telegram.Bot, chat_id: int):
@@ -117,16 +118,6 @@ async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TY
     await context.bot.send_message(chat_id=update.effective_chat.id, text=events_text)
 
 
-login_info_handler = ConversationHandler(
-    entry_points=[CommandHandler("start", start), CommandHandler('update_user', update_user)],
-    states={
-        GetUser.GET_USERNAME: [MessageHandler(filters.TEXT, get_username)],
-        GetUser.GET_PASSWORD: [MessageHandler(filters.TEXT | filters.COMMAND, get_password)],
-    },
-    fallbacks=[],
-)
-
-
 async def update_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("once a day", callback_data='schedule_1'),
                                       InlineKeyboardButton("once a week", callback_data='schedule_2'),
@@ -159,15 +150,72 @@ async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_error(exams.error, context.bot, update.effective_chat.id)
         return
     exams = exams.result
-    exams = [exam for exam in exams if exam.notebook_url]
+    exams = [exam for exam in exams if exam.notebook]
     exams.sort(key=lambda a: a.time_start, reverse=True)
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(f'{exam.name} {exam.number}', callback_data=f'notebook_{exam.notebook_url}')]
+        [[InlineKeyboardButton(f'{exam.name} {exam.period}', callback_data=f'notebook_{exam.number}')]
          for exam in exams])
 
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="choose notebook to download",
                                    reply_markup=keyboard)
+
+
+async def register_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    exams = Internet(data.user_name, data.password).get_all_exams()
+    if exams.warnings:
+        await handle_warnings(exams.warnings, context.bot, update.effective_chat.id)
+    if exams.error:
+        await handle_error(exams.error, context.bot, update.effective_chat.id)
+        return
+    exams = exams.result
+    exams.sort(key=lambda a: a.time_start, reverse=False)
+    buttons = []
+    for exam in exams:
+        if exam.register:
+            buttons.append([InlineKeyboardButton(f'רישום {exam.name} {exam.period}',
+                                                 callback_data=f'register_period_1_{exam.number}')])
+        elif exam.cancel_register:
+            buttons.append([InlineKeyboardButton(f'ביטול רישום {exam.name} {exam.period}',
+                                                 callback_data=f'register_period_0_{exam.number}')])
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text="register or cancel register",
+                                   reply_markup=keyboard)
+
+
+async def call_back_register_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    register_data = update.callback_query.data[len('register_period_'):].split('_')
+    register_data[0] = register_data[0] == '1'
+    res = Internet(data.user_name, data.password).register_exam(register_data[1], register_data[0])
+    if res.error:
+        await handle_error(res.error, context.bot, update.effective_chat.id)
+        return
+    exams = Internet(data.user_name, data.password).get_all_exams()
+    if exams.error:
+        await handle_error(exams.error, context.bot, update.effective_chat.id)
+        return
+    exams = exams.result
+    buttons = []
+    for exam in exams:
+        if exam.register:
+            buttons.append([InlineKeyboardButton(f'רישום {exam.name} {exam.period}',
+                                                 callback_data=f'register_period_1_{exam.number}')])
+        elif exam.cancel_register:
+            buttons.append([InlineKeyboardButton(f'ביטול רישום {exam.name} {exam.period}',
+                                                 callback_data=f'register_period_0_{exam.number}')])
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    await context.bot.edit_message_reply_markup(update.effective_chat.id, update.effective_message.id, reply_markup=keyboard)
 
 
 async def get_upcoming_exams(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -185,7 +233,7 @@ async def get_upcoming_exams(update: Update, context: ContextTypes.DEFAULT_TYPE)
     now = datetime.datetime.now()
     exams = [exam for exam in exams if exam.time_start > now]
     exams.sort(key=lambda a: a.time_start)
-    text = '\n--------\n\n'.join(f'{exam.name} {exam.number}\n{exam.room}\n{exam.time_start}\n{exam.time_end}'
+    text = '\n--------\n\n'.join(f'{exam.name} {exam.period}\n{exam.room}\n{exam.time_start}\n{exam.time_end}'
                                  for exam in exams)
 
     await context.bot.send_message(chat_id=update.effective_chat.id,
@@ -234,6 +282,16 @@ async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAUL
                                    text=f"schedule message to unfinished events set to `{value_text}`")
 
 
+login_info_handler = ConversationHandler(
+    entry_points=[CommandHandler("start", start), CommandHandler('update_user', update_user)],
+    states={
+        GetUser.GET_USERNAME: [MessageHandler(filters.TEXT, get_username)],
+        GetUser.GET_PASSWORD: [MessageHandler(filters.TEXT | filters.COMMAND, get_password)],
+    },
+    fallbacks=[],
+)
+
+
 def start_telegram_bot(token: str):
     application = ApplicationBuilder().token(token).build()
     application.add_handler(CommandHandler('get_grades', get_grades))
@@ -242,11 +300,13 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('update_schedule', update_schedule))
     application.add_handler(CommandHandler('get_notebook', get_notebook))
     application.add_handler(CommandHandler('get_upcoming_exams', get_upcoming_exams))
+    application.add_handler(CommandHandler('register_period', register_period))
 
     application.add_handler(login_info_handler)
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
     application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
+    application.add_handler(CallbackQueryHandler(call_back_register_button, pattern=r'^register_period_'))
 
     application.run_polling()
 
