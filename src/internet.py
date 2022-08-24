@@ -8,10 +8,11 @@ import html
 import json
 import re
 
-Grade = namedtuple('Grade', 'name units grade')
+Grade = namedtuple('Grade', 'name units grade grade_distribution')
 Exam = namedtuple('Exam', 'name number time_start time_end mark notebook_url room')
 Event = namedtuple('event', 'name course_name course_id end_time url')
 Res = namedtuple('Result', 'result warnings error')
+GradesDistribution = namedtuple('GradesDistribution', 'grade average standard_deviation position image')
 
 
 class Document(Enum):
@@ -230,7 +231,7 @@ class Internet:
         page = 1
         grades = []
         while page <= last_page:
-            grades += Internet.__get_grade_from_page(website.text)
+            grades += Internet.__get_grade_from_page(website.text, page)
             page += 1
             if page <= last_page:
                 inputs = Internet.__get_hidden_inputs(website.text)
@@ -302,19 +303,78 @@ class Internet:
         return Res(self.__post('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx',
                                payload_data=inputs).content, warnings, None)
 
+    def get_grade_distribution(self, grade_distribution:str):
+        res, warnings, error = self.connect_orbit()
+        if not res:
+            return Res(False, warnings, error)
+
+        website = self.__get('https://live.or-bit.net/hadassah/StudentGradesList.aspx')
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+        grade_distribution = grade_distribution.split('_')
+
+        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
+        inputs['__EVENTARGUMENT'] = f'Page${grade_distribution[0]}'
+        website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx', payload_data=inputs)
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+
+        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs[f'ctl00'
+               f'$ContentPlaceHolder1'
+               f'$gvGradesList'
+               f'$GridRow{grade_distribution[1]}'
+               f'$imgShowGradeDistribution.x'] = 1
+        inputs[f'ctl00'
+               f'$ContentPlaceHolder1'
+               f'$gvGradesList'
+               f'$GridRow{grade_distribution[1]}'
+               f'$imgShowGradeDistribution.y'] = 1
+        website = self.__post('https://live.or-bit.net/hadassah/StudentGradesList.aspx', payload_data=inputs)
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+        table = re.findall('<span id="ContentPlaceHolder1_ucLessonGradeDistribution_lblStatData"><table>(.*?)</table>',
+                           website.text, re.DOTALL)[0]
+        table = re.findall('<td.*?>(.*?)</td>', table, re.DOTALL)
+        grade = table[1]
+        avg = table[3]
+        standard_deviation = table[5]
+        position = table[7]
+        img_url = re.findall('src="(/hadassah/ChartImg.axd\\?.*?)"', website.text, re.DOTALL)[0]
+        img_website = self.__get(f'https://live.or-bit.net{img_url}')
+        img = img_website.content
+        return Res(
+            GradesDistribution(
+                grade=grade,
+                average=avg,
+                standard_deviation=standard_deviation,
+                position=position,
+                image=img
+            ),
+            warnings=warnings,
+            error=None
+        )
+
     @staticmethod
-    def __get_grade_from_page(page: str) -> List[Grade]:
+    def __get_grade_from_page(page: str, page_number: int) -> List[Grade]:
         subjects_str = re.findall('<tr id="ContentPlaceHolder1_gvGradesList" class="GridRow">(.*?)</tr>',
                                   page,
                                   re.DOTALL)
         final_res = []
         for subject in subjects_str:
             data = re.findall('<td.*?>(.*?)</td>', subject, re.DOTALL)
+            grade_distribution = re.search(
+                r'ctl00\$ContentPlaceHolder1\$gvGradesList\$GridRow([0-9]+?)\$imgShowGradeDistribution', data[6])
+            if grade_distribution:
+                grade_distribution = f'{page_number}_{grade_distribution.group(1)}'
             final_res.append(
                 Grade(
                     name=html.unescape(data[1]),
                     units=int(data[4]),
-                    grade=re.findall('>([0-9א-ת]*?)</span>', data[6])[0])
+                    grade=re.findall('>([0-9א-ת]*?)</span>', data[6])[0],
+                    grade_distribution=grade_distribution
+                )
             )
         return final_res
 

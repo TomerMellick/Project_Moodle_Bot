@@ -96,6 +96,28 @@ async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text + f'\n\n ממוצע: {avg}')
 
 
+async def get_grade_distribution(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    grades = Internet(data.user_name, data.password).get_grades()
+    if grades.warnings:
+        await handle_warnings(grades.warnings, context.bot, update.effective_chat.id)
+    if grades.error:
+        await handle_error(grades.error, context.bot, update.effective_chat.id)
+        return
+    grades = grades.result
+
+    keyword = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(f'{grade.name}', callback_data=f'grade_distribution_{grade.grade_distribution}')]
+            for grade in grades if grade.grade_distribution
+        ]
+    )
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='select subject', reply_markup=keyword)
+
+
 async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = database.get_user_by_id(update.effective_chat.id)
     if not data:
@@ -145,6 +167,27 @@ async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="choose  file to download",
                                    reply_markup=keyboard)
+
+
+async def call_back_get_grade_distribution_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    grade_distribution_id = update.callback_query.data[len('grade_distribution_'):]
+    grade_distribution = Internet(data.user_name, data.password).get_grade_distribution(grade_distribution_id)
+    if grade_distribution.warnings:
+        await handle_warnings(grade_distribution.warnings, context.bot, update.effective_chat.id)
+    if grade_distribution.error:
+        await handle_error(grade_distribution.error, context.bot, update.effective_chat.id)
+        return
+    grade_distribution = grade_distribution.result
+    text = f'ציונך: {grade_distribution.grade}\n' \
+           f'ממוצע: {grade_distribution.average}\n' \
+           f'ס.ת: {grade_distribution.standard_deviation}\n' \
+           f'דירוג: {grade_distribution.position}\n'
+    await context.bot.send_message(update.effective_chat.id, text=text)
+    await context.bot.send_photo(update.effective_chat.id, grade_distribution.image)
 
 
 async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,11 +285,14 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('update_schedule', update_schedule))
     application.add_handler(CommandHandler('get_notebook', get_notebook))
     application.add_handler(CommandHandler('get_upcoming_exams', get_upcoming_exams))
+    application.add_handler(CommandHandler('get_grade_distribution', get_grade_distribution))
 
     application.add_handler(login_info_handler)
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
     application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
+    application.add_handler(CallbackQueryHandler(call_back_get_grade_distribution_button,
+                                                 pattern=r'^grade_distribution_'))
 
     application.run_polling()
 
