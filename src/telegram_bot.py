@@ -21,7 +21,7 @@ class GetUser(Enum):
 
 async def enter_data(bot: telegram.Bot, chat_id: int):
     await bot.send_message(chat_id=chat_id,
-                           text="must enter username and password before using this command")
+                           text="must enter username and password before using this command \nuse /update_user")
 
 
 async def handle_warnings(warning: List[Internet.Warning], bot: telegram.Bot, chat_id: int):
@@ -39,10 +39,13 @@ async def handle_error(error: Internet.Error, bot: telegram.Bot, chat_id: int):
                                text="error: moodle website is down")
     elif error is Internet.Error.WRONG_PASSWORD:
         await bot.send_message(chat_id=chat_id,
-                               text="error: username or password is incorrect")
+                               text="error: username or password is incorrect use /update_user to update them")
     elif error is Internet.Error.BOT_ERROR:
         await bot.send_message(chat_id=chat_id,
                                text="error: the bot did something stupid, please try again later")
+    elif error is Internet.Error.CHANGE_PASSWORD:
+        await bot.send_message(chat_id=chat_id,
+                               text="error: you need to change the password in the orbit site")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -138,15 +141,6 @@ async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TY
 
     await context.bot.send_message(chat_id=update.effective_chat.id, text=events_text)
 
-
-login_info_handler = ConversationHandler(
-    entry_points=[CommandHandler("start", start), CommandHandler('update_user', update_user)],
-    states={
-        GetUser.GET_USERNAME: [MessageHandler(filters.TEXT, get_username)],
-        GetUser.GET_PASSWORD: [MessageHandler(filters.TEXT | filters.COMMAND, get_password)],
-    },
-    fallbacks=[],
-)
 
 
 async def update_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -276,6 +270,14 @@ async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAUL
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text=f"schedule message to unfinished events set to `{value_text}`")
 
+login_info_handler = ConversationHandler(
+    entry_points=[CommandHandler("start", start), CommandHandler('update_user', update_user)],
+    states={
+        GetUser.GET_USERNAME: [MessageHandler(filters.TEXT, get_username)],
+        GetUser.GET_PASSWORD: [MessageHandler(filters.TEXT | filters.COMMAND, get_password)],
+    },
+    fallbacks=[],
+)
 
 def start_telegram_bot(token: str):
     application = ApplicationBuilder().token(token).build()

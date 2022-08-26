@@ -58,14 +58,15 @@ class Internet:
         self.password = password
 
     class Error(Enum):
-        ORBIT_DOWN = 0b001
-        MOODLE_DOWN = 0b010
-        WRONG_PASSWORD = 0b100
-        BOT_ERROR = 0b1000
-        WEBSITE_DOWN = ORBIT_DOWN | MOODLE_DOWN
+        ORBIT_DOWN = 0
+        MOODLE_DOWN = 1
+        WRONG_PASSWORD = 2
+        BOT_ERROR = 3
+        WEBSITE_DOWN = 4
+        CHANGE_PASSWORD = 5
 
     class Warning(Enum):
-        CHANGE_PASSWORD = auto()
+        CHANGE_PASSWORD = 0
 
     def connect_orbit(self) -> Res:
         """
@@ -101,6 +102,9 @@ class Internet:
             return self.orbit_res
 
         if orbit_website.url == 'https://live.or-bit.net/hadassah/ChangePassword.aspx':
+            if self.__get('https://live.or-bit.net/hadassah/Main.aspx').url == 'https://live.or-bit.net/hadassah/ChangePassword.aspx':
+                self.orbit_res = Res(False, [], Internet.Error.CHANGE_PASSWORD)
+                return self.orbit_res
             self.orbit_res.warnings.append(Internet.Warning.CHANGE_PASSWORD)
 
         self.orbit_res = Res(True, self.orbit_res.warnings, None)
