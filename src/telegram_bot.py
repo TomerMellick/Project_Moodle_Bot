@@ -45,7 +45,11 @@ async def handle_error(error: Internet.Error, bot: telegram.Bot, chat_id: int):
                                text="error: the bot did something stupid, please try again later")
     elif error is Internet.Error.CHANGE_PASSWORD:
         await bot.send_message(chat_id=chat_id,
-                               text="error: you need to change the password in the orbit site")
+                               text="error: you need to change the password in the orbit site "
+                                    "or by using /change_password command")
+    elif error is Internet.Error.OLD_EQUAL_NEW_PASSWORD:
+        await bot.send_message(chat_id=chat_id,
+                               text="error: Please enter password that was never in use or /cancel to cancel")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,6 +61,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def update_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Please enter your orbit username")
     return GetUser.GET_USERNAME
+
+
+async def change_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="Please enter your new orbit password "
+                                                                          "or /cancel to cancel")
+    return GetUser.GET_PASSWORD
+
+
+async def get_new_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    new_password = Internet(data.user_name, data.password).change_password(data.password, update.message.text)
+    if new_password.warnings:
+        await handle_warnings(new_password.warnings, context.bot, update.effective_chat.id)
+    if new_password.error:
+        await handle_error(new_password.error, context.bot, update.effective_chat.id)
+        return GetUser.GET_PASSWORD
+    database.add_user(update.effective_chat.id, data.user_name, update.message.text)
+    await context.bot.send_message(update.effective_chat.id, text="password changed successfully")
+    return ConversationHandler.END
 
 
 async def get_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -140,7 +167,6 @@ async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TY
                                                                            for event in events)
 
     await context.bot.send_message(chat_id=update.effective_chat.id, text=events_text)
-
 
 
 async def update_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -270,6 +296,12 @@ async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAUL
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text=f"schedule message to unfinished events set to `{value_text}`")
 
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(update.effective_chat.id, text="operation canceled")
+    return ConversationHandler.END
+
+
 login_info_handler = ConversationHandler(
     entry_points=[CommandHandler("start", start), CommandHandler('update_user', update_user)],
     states={
@@ -278,6 +310,14 @@ login_info_handler = ConversationHandler(
     },
     fallbacks=[],
 )
+change_password_handler = ConversationHandler(
+    entry_points=[CommandHandler("change_password", change_password)],
+    states={
+        GetUser.GET_PASSWORD: [MessageHandler(filters.TEXT & (~ filters.COMMAND), get_new_password)]
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+
 
 def start_telegram_bot(token: str):
     application = ApplicationBuilder().token(token).build()
@@ -290,6 +330,8 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('get_grade_distribution', get_grade_distribution))
 
     application.add_handler(login_info_handler)
+    application.add_handler(change_password_handler)
+
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
     application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))

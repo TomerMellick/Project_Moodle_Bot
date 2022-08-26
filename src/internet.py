@@ -64,6 +64,7 @@ class Internet:
         BOT_ERROR = 3
         WEBSITE_DOWN = 4
         CHANGE_PASSWORD = 5
+        OLD_EQUAL_NEW_PASSWORD = 6
 
     class Warning(Enum):
         CHANGE_PASSWORD = 0
@@ -102,7 +103,8 @@ class Internet:
             return self.orbit_res
 
         if orbit_website.url == 'https://live.or-bit.net/hadassah/ChangePassword.aspx':
-            if self.__get('https://live.or-bit.net/hadassah/Main.aspx').url == 'https://live.or-bit.net/hadassah/ChangePassword.aspx':
+            if self.__get(
+                    'https://live.or-bit.net/hadassah/Main.aspx').url == 'https://live.or-bit.net/hadassah/ChangePassword.aspx':
                 self.orbit_res = Res(False, [], Internet.Error.CHANGE_PASSWORD)
                 return self.orbit_res
             self.orbit_res.warnings.append(Internet.Warning.CHANGE_PASSWORD)
@@ -307,7 +309,24 @@ class Internet:
         return Res(self.__post('https://live.or-bit.net/hadassah/StudentAssignmentTermList.aspx',
                                payload_data=inputs).content, warnings, None)
 
-    def get_grade_distribution(self, grade_distribution:str):
+    def change_password(self, old_password: str, new_password: str):
+        if old_password == new_password:
+            return Res(False, [], Internet.Error.OLD_EQUAL_NEW_PASSWORD)
+        res, warnings, error = self.connect_orbit()
+        if not res and error != Internet.Error.CHANGE_PASSWORD:
+            return Res(False, warnings, error)
+        website = self.__get('https://live.or-bit.net/hadassah/ChangePassword.aspx')
+        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs['ctl00$ContentPlaceHolder1$edtCurrentPassword'] = old_password
+        inputs['ctl00$ContentPlaceHolder1$edtNewPassword1'] = new_password
+        inputs['ctl00$ContentPlaceHolder1$edtNewPassword2'] = new_password
+        inputs['ctl00$ContentPlaceHolder1$btnSave'] = 'עדכן'
+        website = self.__post('https://live.or-bit.net/hadassah/ChangePassword.aspx', payload_data=inputs)
+        if 'OLScriptCounter1alert() { window.alert(' in website.text:
+            return Res(False, [], Internet.Error.OLD_EQUAL_NEW_PASSWORD)
+        return Res(True, [], None)
+
+    def get_grade_distribution(self, grade_distribution: str):
         res, warnings, error = self.connect_orbit()
         if not res:
             return Res(False, warnings, error)
