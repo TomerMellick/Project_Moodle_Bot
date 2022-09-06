@@ -395,7 +395,7 @@ class Internet:
                 Grade(
                     name=html.unescape(data[1]),
                     units=int(data[4]),
-                    grade=re.findall('>([0-9א-ת]*?)</span>', data[6])[0],
+                    grade=re.findall('>(.*?)</span>', data[6])[0],
                     grade_distribution=grade_distribution
                 )
             )
