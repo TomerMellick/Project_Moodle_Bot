@@ -7,3 +7,4 @@ git checkout master
 git pull
 
 bash -c "exec -a bot_develop python main.py &"
+
