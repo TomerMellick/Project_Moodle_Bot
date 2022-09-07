@@ -9,7 +9,7 @@ import internet
 from internet import Internet, Document, documents_heb_name, documents_file_name
 from enum import Enum, auto
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from src import database
+import database
 
 users = {}
 
