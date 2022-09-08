@@ -31,5 +31,5 @@ get_document - get document from the moodle
 update_schedule - update the schedule  
 get_notebook - get notebook file  
 get_upcoming_exams - get all upcoming exams  
-grade_distribution - get distribution for specific grade  
+get_grade_distribution - get distribution for specific grade  
 change_password - change password in the orbit website  
