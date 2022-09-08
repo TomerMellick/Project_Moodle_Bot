@@ -93,10 +93,18 @@ async def get_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    database.add_user(update.effective_chat.id, users.pop(update.effective_chat.id), update.message.text)
+    username = users.pop(update.effective_chat.id)
+    password = update.message.text
+    database.add_user(update.effective_chat.id, username, password)
     await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Thanks")
-    return ConversationHandler.END
+    if Internet(username, password).connect_orbit().result:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Thanks")
+        return ConversationHandler.END
+    else:
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                                       text="username or password are incorrect\n"
+                                            "Please enter your username again")
+        return GetUser.GET_USERNAME
 
 
 async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
