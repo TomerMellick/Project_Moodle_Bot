@@ -75,7 +75,7 @@ async def get_new_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not data:
         await enter_data(context.bot, update.effective_chat.id)
         return
-    new_password = Internet(data.user_name, data.password).change_password(data.password, update.message.text)
+    new_password = Internet(data.user_name, data.password).change_password(update.message.text)
     if new_password.warnings:
         await handle_warnings(new_password.warnings, context.bot, update.effective_chat.id)
     if new_password.error:
