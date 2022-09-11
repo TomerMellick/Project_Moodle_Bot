@@ -227,7 +227,7 @@ class Internet:
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.x'] = 1
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.y'] = 1
         print(hidden_inputs)
-        return Res(self.__post('Internet.__GET_DOCUMENT_URL',
+        return Res(self.__post(Internet.__GET_DOCUMENT_URL,
                                payload_data=hidden_inputs).content, warnings, None)
 
     def get_grades(self) -> Res:
