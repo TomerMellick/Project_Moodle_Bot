@@ -263,6 +263,41 @@ async def get_upcoming_exams(update: Update, context: ContextTypes.DEFAULT_TYPE)
                                    text=text)
 
 
+async def register_class(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+
+    classes = Internet(data.user_name, data.password).get_classes()
+    if classes.warnings:
+        await handle_warnings(classes.warnings, context.bot, update.effective_chat.id)
+    if classes.error:
+        await handle_error(classes.error, context.bot, update.effective_chat.id)
+        return
+    classes = classes.result
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(my_class, callback_data=f'register_class_{my_class}')] for my_class in classes])
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="select class", reply_markup=keyboard)
+
+async def call_back_register_class(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = database.get_user_by_id(update.effective_chat.id)
+    if not data:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+
+    classes = Internet(data.user_name, data.password).get_classes()
+    if classes.warnings:
+        await handle_warnings(classes.warnings, context.bot, update.effective_chat.id)
+    if classes.error:
+        await handle_error(classes.error, context.bot, update.effective_chat.id)
+        return
+    classes = classes.result
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(my_class, callback_data=f'register_class_{my_class}')] for my_class in classes])
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="select class", reply_markup=keyboard)
+
+
 async def call_back_notebook_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = database.get_user_by_id(update.effective_chat.id)
     if not data:
@@ -336,6 +371,8 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('get_notebook', get_notebook))
     application.add_handler(CommandHandler('get_upcoming_exams', get_upcoming_exams))
     application.add_handler(CommandHandler('get_grade_distribution', get_grade_distribution))
+    application.add_handler(CommandHandler('register_class', register_class))
+
 
     application.add_handler(login_info_handler)
     application.add_handler(change_password_handler)

@@ -57,6 +57,7 @@ class Internet:
     __GET_DOCUMENT_URL = f'{__ORBIT_URL}/DocumentGenerationPage.aspx'
     __GRADE_LIST_URL = f'{__ORBIT_URL}//StudentGradesList.aspx'
     __EXAMS_URL = f'{__ORBIT_URL}/StudentAssignmentTermList.aspx'
+    __SET_SCHEDULE_URL = f'{__ORBIT_URL}/CreateStudentWeeklySchedule.aspx'
 
     __MOODLE_URL = 'https://mowgli.hac.ac.il/'
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
@@ -208,6 +209,32 @@ class Internet:
         if last_date:
             data = list(filter(lambda event: event.end_time <= last_date, data))
         return Res(data, warnings, None)
+
+    def get_lessons(self) -> Res:
+        res, warnings, error = self.connect_orbit()
+        if not res:
+            return Res(False, warnings, error)
+
+        website = self.__get(Internet.__SET_SCHEDULE_URL)
+        inputs = Internet.__get_hidden_inputs(website.text)
+        last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
+                               website.text,
+                               re.DOTALL)[-1]
+        inputs[f'{last_year}.x'] = 0
+        inputs[f'{last_year}.y'] = 0
+        website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
+        lessons = re.findall(r'<table>\s*?<tr>\s*?<td>(.*?)</td>\s*?</tr>\s*?</table>\s*?</span>\s*?</td>\s*?<td valign'
+                             r'="top" nowrap="nowrap">\s*?<span id=".*?">(.*?)</span>.*?(ctl00\$ContentPlaceHolder1\$gv'
+                             r'LinkToLessons\$GridRow[0-9]+?\$btnCourseRequirementsEx)', website.text, re.DOTALL)
+
+        return Res(lessons, warnings, error)
+
+    def get_classes(self):
+        lessons, warnings, error = self.get_lessons()
+        if not lessons:
+            return Res(False, warnings, error)
+        classes = {lesson[1].split('-')[-1] for lesson in lessons}
+        return Res(classes, warnings, error)
 
     def get_document(self, document: Document) -> Res:
         """
