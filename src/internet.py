@@ -2,7 +2,7 @@ from enum import Enum
 from urllib.parse import urlencode, quote
 from collections import namedtuple
 from datetime import datetime
-from typing import Union, List
+from typing import Union, List, Optional
 import requests
 import html
 import json
@@ -210,31 +210,76 @@ class Internet:
             data = list(filter(lambda event: event.end_time <= last_date, data))
         return Res(data, warnings, None)
 
-    def get_lessons(self) -> Res:
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
+    def get_lessons(self, text: Optional[str] = None) -> Res:
+        warnings = []
+        if not text:
+            res, warnings, error = self.connect_orbit()
+            if not res:
+                return Res(False, warnings, error)
 
-        website = self.__get(Internet.__SET_SCHEDULE_URL)
-        inputs = Internet.__get_hidden_inputs(website.text)
-        last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
-                               website.text,
-                               re.DOTALL)[-1]
-        inputs[f'{last_year}.x'] = 0
-        inputs[f'{last_year}.y'] = 0
-        website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
-        lessons = re.findall(r'<table>\s*?<tr>\s*?<td>(.*?)</td>\s*?</tr>\s*?</table>\s*?</span>\s*?</td>\s*?<td valign'
-                             r'="top" nowrap="nowrap">\s*?<span id=".*?">(.*?)</span>.*?(ctl00\$ContentPlaceHolder1\$gv'
-                             r'LinkToLessons\$GridRow[0-9]+?\$btnCourseRequirementsEx)', website.text, re.DOTALL)
+            website = self.__get(Internet.__SET_SCHEDULE_URL)
+            inputs = Internet.__get_hidden_inputs(website.text)
+            last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
+                                   website.text,
+                                   re.DOTALL)[-1]
+            inputs[f'{last_year}.x'] = 0
+            inputs[f'{last_year}.y'] = 0
+            website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
+            text = website.text
+        lessons = re.findall(r'(ctl00\$ContentPlaceHolder1\$gvLinkToLessons\$GridRow[0-9]+?\$btnLinkStudentToLesson).*?'
+                             r'<table>\s*?<tr>\s*?<td>(.*?)</td>\s*?</tr>\s*?</table>\s*?</span>\s*?</td>\s*?<td valign'
+                             r'="top" nowrap="nowrap">\s*?<span id=".*?">(.*?)</span>', text, re.DOTALL)
 
-        return Res(lessons, warnings, error)
+        return Res(lessons, warnings, None)
 
-    def get_classes(self):
+    def get_classes(self) -> Res:
+        """
+        get all class available via orbit
+        :return: all class available via orbit (as set)
+        """
         lessons, warnings, error = self.get_lessons()
         if not lessons:
             return Res(False, warnings, error)
-        classes = {lesson[1].split('-')[-1] for lesson in lessons}
+        classes = {lesson[2].split('-')[-1] for lesson in lessons}
         return Res(classes, warnings, error)
+
+    def register_for_class(self, class_name: str):
+        lessons, warnings, error = self.get_lessons()
+        if not lessons:
+            return Res(False, warnings, error)
+        website = self.__get(Internet.__SET_SCHEDULE_URL)
+        last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
+                               website.text,
+                               re.DOTALL)[-1]
+        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs[f'{last_year}.x'] = 0
+        inputs[f'{last_year}.y'] = 0
+        website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
+
+        registered_lessons = []
+        unregistered_lessons = []
+        websites = []
+        do_stuff = True
+        while do_stuff:
+            do_stuff = False
+            for lesson in lessons:
+                if any(lesson[2] == less[2] for less in (registered_lessons + unregistered_lessons)):
+                    continue
+                if lesson[2].split('-')[-1] != class_name:
+                    continue
+                inputs = Internet.__get_hidden_inputs(website.text)
+                inputs[f'{lesson[0]}.x'] = 1
+                inputs[f'{lesson[0]}.y'] = 1
+                website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
+                websites.append(website)
+                if 'function OLScriptCounter1alert() {' in website.text:
+                    unregistered_lessons.append(lesson)
+                else:
+                    registered_lessons.append(lesson)
+                do_stuff = True
+                lessons = self.get_lessons(website.text)[0]
+                break
+        return Res((registered_lessons, unregistered_lessons),warnings,None)
 
     def get_document(self, document: Document) -> Res:
         """

@@ -280,22 +280,29 @@ async def register_class(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [[InlineKeyboardButton(my_class, callback_data=f'register_class_{my_class}')] for my_class in classes])
     await context.bot.send_message(chat_id=update.effective_chat.id, text="select class", reply_markup=keyboard)
 
-async def call_back_register_class(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def call_back_register_class_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = database.get_user_by_id(update.effective_chat.id)
     if not data:
         await enter_data(context.bot, update.effective_chat.id)
         return
+    my_class = update.callback_query.data[len('register_class_'):]
+    res = Internet(data.user_name, data.password).register_for_class(my_class)
 
-    classes = Internet(data.user_name, data.password).get_classes()
-    if classes.warnings:
-        await handle_warnings(classes.warnings, context.bot, update.effective_chat.id)
-    if classes.error:
-        await handle_error(classes.error, context.bot, update.effective_chat.id)
+    if res.warnings:
+        await handle_warnings(res.warnings, context.bot, update.effective_chat.id)
+    if res.error:
+        await handle_error(res.error, context.bot, update.effective_chat.id)
         return
-    classes = classes.result
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(my_class, callback_data=f'register_class_{my_class}')] for my_class in classes])
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="select class", reply_markup=keyboard)
+    res = res.result
+    register_message = '\n-------\n'.join(f'{lesson[1]}-{lesson[2]}' for lesson in res[0])
+    if register_message:
+        register_message = "register to:\n" + register_message
+    unregister_message = '\n-------\n'.join(f'{lesson[1]}-{lesson[2]}' for lesson in res[1])
+    if unregister_message:
+        unregister_message = "\nproblem with:\n" + unregister_message
+    message = register_message + unregister_message
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
 async def call_back_notebook_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -373,13 +380,15 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('get_grade_distribution', get_grade_distribution))
     application.add_handler(CommandHandler('register_class', register_class))
 
-
     application.add_handler(login_info_handler)
     application.add_handler(change_password_handler)
 
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
     application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
+    application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
+    application.add_handler(CallbackQueryHandler(call_back_register_class_button, pattern=r'^register_class_'))
+
     application.add_handler(CallbackQueryHandler(call_back_get_grade_distribution_button,
                                                  pattern=r'^grade_distribution_'))
 
