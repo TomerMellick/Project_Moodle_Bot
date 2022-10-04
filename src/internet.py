@@ -8,6 +8,8 @@ import html
 import json
 import re
 
+import database
+
 Grade = namedtuple('Grade', 'name units grade grade_distribution')
 Exam = namedtuple('Exam', 'name number time_start time_end mark notebook_url room')
 Event = namedtuple('event', 'name course_name course_id end_time url')
@@ -63,12 +65,11 @@ class Internet:
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
     __MOODLE_SERVICE_URL = f'{__MOODLE_URL}/lib/ajax/service.php'
 
-    def __init__(self, username: str, password: str):
+    def __init__(self, user: database.User):
         self.session = requests.session()
         self.moodle_res = Res(False, [], None)
         self.orbit_res = Res(False, [], None)
-        self.username = username
-        self.password = password
+        self.user = user
 
     class Error(Enum):
         ORBIT_DOWN = 0
@@ -97,11 +98,11 @@ class Internet:
             self.orbit_res = Res(False, [], Internet.Error.ORBIT_DOWN)
             return self.orbit_res
 
-        login_data = Internet.__get_hidden_inputs(orbit_login_website.text)
+        login_data = self.__get_hidden_inputs(orbit_login_website.text)
         login_data.update(
             {
-                'edtUsername': self.username,
-                'edtPassword': self.password,
+                'edtUsername': self.user.user_name,
+                'edtPassword': self.user.password,
                 '__LASTFOCUS': '',
                 '__EVENTTARGET': '',
                 '__EVENTARGUMENT': '',
@@ -155,6 +156,20 @@ class Internet:
             return self.moodle_res
         self.moodle_res = Res(True, warnings, None)
         return self.moodle_res
+
+    def get_years(self) -> Res:
+        """
+        get all the years from that can be picked
+        """
+        res, warnings, error = self.connect_orbit()
+        if error:
+            return Res(False, warnings, error)
+        website = self.__get(Internet.__MAIN_URL)
+        years_regex = '<select name="ctl00\\$cmbActiveYear".*?</select'
+        year_regex = 'value="([0-9]*?)"'
+        years = re.findall(years_regex, website.text, re.DOTALL)[0]
+        years = re.findall(year_regex, years, re.DOTALL)
+        return Res(years, warnings, None)
 
     def get_unfinished_events(self, last_date: datetime = None) -> Res:
         """
@@ -218,7 +233,7 @@ class Internet:
                 return Res(False, warnings, error)
 
             website = self.__get(Internet.__SET_SCHEDULE_URL)
-            inputs = Internet.__get_hidden_inputs(website.text)
+            inputs = self.__get_hidden_inputs(website.text)
             last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
                                    website.text,
                                    re.DOTALL)[-1]
@@ -251,7 +266,7 @@ class Internet:
         last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
                                website.text,
                                re.DOTALL)[-1]
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs[f'{last_year}.x'] = 0
         inputs[f'{last_year}.y'] = 0
         website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
@@ -267,7 +282,7 @@ class Internet:
                     continue
                 if lesson[2].split('-')[-1] != class_name:
                     continue
-                inputs = Internet.__get_hidden_inputs(website.text)
+                inputs = self.__get_hidden_inputs(website.text)
                 inputs[f'{lesson[0]}.x'] = 1
                 inputs[f'{lesson[0]}.y'] = 1
                 website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
@@ -279,7 +294,7 @@ class Internet:
                 do_stuff = True
                 lessons = self.get_lessons(website.text)[0]
                 break
-        return Res((registered_lessons, unregistered_lessons),warnings,None)
+        return Res((registered_lessons, unregistered_lessons), warnings, None)
 
     def get_document(self, document: Document) -> Res:
         """
@@ -324,7 +339,7 @@ class Internet:
             grades += Internet.__get_grade_from_page(website.text, page)
             page += 1
             if page <= last_page:
-                inputs = Internet.__get_hidden_inputs(website.text)
+                inputs = self.__get_hidden_inputs(website.text)
                 inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
                 inputs['__EVENTARGUMENT'] = f'Page${page}'
                 website = self.__post(Internet.__GRADE_LIST_URL, payload_data=inputs)
@@ -352,7 +367,7 @@ class Internet:
         website, warnings, error = self.__get_exam_website()
         if not website:
             return Res(website, warnings, error)
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
         website = self.__post(Internet.__EXAMS_URL, payload_data=inputs)
         all_exams_text = re.findall(
@@ -397,11 +412,11 @@ class Internet:
         website, warnings, error = self.__get_exam_website()
         if not website:
             return Res(website, warnings, error)
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$btnOkAgreement'] = 'אישור'
         inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
         website = self.__post(Internet.__EXAMS_URL, payload_data=inputs)
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
         inputs[f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{number}$btnDownload.x'] = 1
         inputs[f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{number}$btnDownload.y'] = 1
@@ -414,14 +429,14 @@ class Internet:
         :param new_password: the new password the user want
         :return: is the password changed successfully
         """
-        if self.password == new_password:
+        if self.user.password == new_password:
             return Res(False, [], Internet.Error.OLD_EQUAL_NEW_PASSWORD)
         res, warnings, error = self.connect_orbit()
         if not res and error != Internet.Error.CHANGE_PASSWORD:
             return Res(False, warnings, error)
         website = self.__get(Internet.__CHANGE_PASSWORD_URL)
-        inputs = Internet.__get_hidden_inputs(website.text)
-        inputs['ctl00$ContentPlaceHolder1$edtCurrentPassword'] = self.password
+        inputs = self.__get_hidden_inputs(website.text)
+        inputs['ctl00$ContentPlaceHolder1$edtCurrentPassword'] = self.user.password
         inputs['ctl00$ContentPlaceHolder1$edtNewPassword1'] = new_password
         inputs['ctl00$ContentPlaceHolder1$edtNewPassword2'] = new_password
         inputs['ctl00$ContentPlaceHolder1$btnSave'] = 'עדכן'
@@ -445,14 +460,14 @@ class Internet:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
         grade_distribution = grade_distribution.split('_')
 
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
         inputs['__EVENTARGUMENT'] = f'Page${grade_distribution[0]}'
         website = self.__post(Internet.__GRADE_LIST_URL, payload_data=inputs)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
 
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs[f'ctl00'
                f'$ContentPlaceHolder1'
                f'$gvGradesList'
@@ -548,8 +563,7 @@ class Internet:
             get_payload = ''
         return self.session.post(f"{url}{get_payload}", data=payload_data, json=payload_json)
 
-    @staticmethod
-    def __get_hidden_inputs(text: str) -> dict:
+    def __get_hidden_inputs(self, text: str) -> dict:
         """
         get all hidden inputs from the website (include the year)
         :param text: the html code
@@ -557,9 +571,13 @@ class Internet:
         """
         hidden_input_regex = r"<input type=\"hidden\" name=\"(.*?)\" id=\".*?\" value=\"(.*?)\" \/>"
         hidden_inputs = re.findall(hidden_input_regex, text, re.DOTALL)
-        year_regex = '<select name="ctl00\\$cmbActiveYear".*?<option selected="selected" value="([0-9]*?)"'
-        year = re.findall(year_regex, text, re.DOTALL)
-        if year:
-            year = int(year[0])
-            hidden_inputs.append(('ctl00$cmbActiveYear', year))
+        if self.user.year:
+            hidden_inputs.append(('ctl00$cmbActiveYear', self.user.year))
+        else:
+            year_regex = '<select name="ctl00\\$cmbActiveYear".*?<option selected="selected" value="([0-9]*?)"'
+            year = re.findall(year_regex, text, re.DOTALL)
+            if year:
+                year = int(year[0])
+                hidden_inputs.append(('ctl00$cmbActiveYear', year))
+
         return dict(hidden_inputs)

@@ -70,18 +70,18 @@ async def change_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_new_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
+    user = database.get_user_by_id(update.effective_chat.id)
     await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
-    if not data:
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
-    new_password = Internet(data.user_name, data.password).change_password(update.message.text)
+    new_password = Internet(user).change_password(update.message.text)
     if new_password.warnings:
         await handle_warnings(new_password.warnings, context.bot, update.effective_chat.id)
     if new_password.error:
         await handle_error(new_password.error, context.bot, update.effective_chat.id)
         return GetUser.GET_PASSWORD
-    database.add_user(update.effective_chat.id, data.user_name, update.message.text)
+    database.add_user(update.effective_chat.id, user.user_name, update.message.text)
     await context.bot.send_message(update.effective_chat.id, text="password changed successfully")
     return ConversationHandler.END
 
@@ -97,7 +97,7 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     password = update.message.text
     database.add_user(update.effective_chat.id, username, password)
     await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
-    if Internet(username, password).connect_orbit().result:
+    if Internet(database.User(update.effective_chat.id, username, password, 0, 0)).connect_orbit().result:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Thanks")
         return ConversationHandler.END
     else:
@@ -108,11 +108,11 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
-    grades = Internet(data[1], data[2]).get_grades()
+    grades = Internet(user).get_grades()
     if grades.warnings:
         await handle_warnings(grades.warnings, context.bot, update.effective_chat.id)
     if grades.error:
@@ -135,11 +135,11 @@ async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_grade_distribution(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
-    grades = Internet(data.user_name, data.password).get_grades()
+    grades = Internet(user).get_grades()
     if grades.warnings:
         await handle_warnings(grades.warnings, context.bot, update.effective_chat.id)
     if grades.error:
@@ -157,11 +157,11 @@ async def get_grade_distribution(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
-    events = Internet(data[1], data[2]).get_unfinished_events()
+    events = Internet(user).get_unfinished_events()
     if events.warnings:
         await handle_warnings(events.warnings, context.bot, update.effective_chat.id)
     if events.error:
@@ -198,12 +198,12 @@ async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def call_back_get_grade_distribution_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
     grade_distribution_id = update.callback_query.data[len('grade_distribution_'):]
-    grade_distribution = Internet(data.user_name, data.password).get_grade_distribution(grade_distribution_id)
+    grade_distribution = Internet(user).get_grade_distribution(grade_distribution_id)
     if grade_distribution.warnings:
         await handle_warnings(grade_distribution.warnings, context.bot, update.effective_chat.id)
     if grade_distribution.error:
@@ -219,11 +219,11 @@ async def call_back_get_grade_distribution_button(update: Update, context: Conte
 
 
 async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
-    exams = Internet(data.user_name, data.password).get_all_exams()
+    exams = Internet(user).get_all_exams()
     if exams.warnings:
         await handle_warnings(exams.warnings, context.bot, update.effective_chat.id)
     if exams.error:
@@ -242,11 +242,11 @@ async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_upcoming_exams(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
-    exams = Internet(data.user_name, data.password).get_all_exams()
+    exams = Internet(user).get_all_exams()
     if exams.warnings:
         await handle_warnings(exams.warnings, context.bot, update.effective_chat.id)
     if exams.error:
@@ -264,12 +264,12 @@ async def get_upcoming_exams(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def register_class(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
 
-    classes = Internet(data.user_name, data.password).get_classes()
+    classes = Internet(user).get_classes()
     if classes.warnings:
         await handle_warnings(classes.warnings, context.bot, update.effective_chat.id)
     if classes.error:
@@ -282,12 +282,12 @@ async def register_class(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def call_back_register_class_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
     my_class = update.callback_query.data[len('register_class_'):]
-    res = Internet(data.user_name, data.password).register_for_class(my_class)
+    res = Internet(user).register_for_class(my_class)
 
     if res.warnings:
         await handle_warnings(res.warnings, context.bot, update.effective_chat.id)
@@ -306,13 +306,12 @@ async def call_back_register_class_button(update: Update, context: ContextTypes.
 
 
 async def call_back_notebook_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
     notebook_id = int(update.callback_query.data[len('notebook_'):])
-    in_user = Internet(data.user_name, data.password)
-    notebook = in_user.get_exam_notebook(notebook_id)
+    notebook = Internet(user).get_exam_notebook(notebook_id)
     if notebook.warnings:
         await handle_warnings(notebook.warnings, context.bot, update.effective_chat.id)
     if notebook.error:
@@ -323,12 +322,12 @@ async def call_back_notebook_button(update: Update, context: ContextTypes.DEFAUL
 
 
 async def call_back_document_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
         await enter_data(context.bot, update.effective_chat.id)
         return
     doc = Document(int(update.callback_query.data[len('document_'):]))
-    doc_value = Internet(data[1], data[2]).get_document(doc)
+    doc_value = Internet(user).get_document(doc)
     if doc_value.warnings:
         await handle_warnings(doc_value.warnings, context.bot, update.effective_chat.id)
     if doc_value.error:
