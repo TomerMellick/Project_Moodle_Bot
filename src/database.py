@@ -5,7 +5,7 @@ from typing import Iterator
 DATABASE = 'database.db'
 TABLE = 'users'
 
-User = namedtuple('User', 'user_id user_name password schedule_code')
+User = namedtuple('User', 'user_id user_name password schedule_code, year')
 
 
 def add_user(user_id: int, user_name: str, password: str):
@@ -22,7 +22,7 @@ def add_user(user_id: int, user_name: str, password: str):
 
     with sqlite3.connect(DATABASE) as con:
         curses = con.cursor()
-        curses.execute(f'INSERT INTO {TABLE} VALUES(?,?,?,0)', (user_id, user_name, password))
+        curses.execute(f'INSERT INTO {TABLE} VALUES(?,?,?,0,0)', (user_id, user_name, password))
 
 
 def delete_user(user_id: int):
