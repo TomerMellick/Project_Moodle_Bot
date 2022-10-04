@@ -362,12 +362,20 @@ async def call_back_document_button(update: Update, context: ContextTypes.DEFAUL
 
 
 async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    value_int = int(update.callback_query.data[len('schedule_')])
+    value_int = int(update.callback_query.data[len('schedule_'):])
     value_text = ['never', 'once a day', 'once a week'][value_int]
     database.update_schedule(update.effective_chat.id, value_int)
 
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text=f"schedule message to unfinished events set to `{value_text}`")
+
+
+async def call_back_set_year_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    value_int = int(update.callback_query.data[len('set_year_'):])
+    database.update_year(update.effective_chat.id, value_int)
+
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=f"year set to `{value_int if value_int else 'default'}`")
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -410,7 +418,7 @@ def start_telegram_bot(token: str):
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
     application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
-    application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
+    application.add_handler(CallbackQueryHandler(call_back_set_year_button, pattern=r'^set_year_'))
     application.add_handler(CallbackQueryHandler(call_back_register_class_button, pattern=r'^register_class_'))
 
     application.add_handler(CallbackQueryHandler(call_back_get_grade_distribution_button,
