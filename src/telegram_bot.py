@@ -134,6 +134,30 @@ async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text + f'\n\n ממוצע: {avg}')
 
 
+async def set_year(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = database.get_user_by_id(update.effective_chat.id)
+    if not user:
+        await enter_data(context.bot, update.effective_chat.id)
+        return
+    years = Internet(user).get_years()
+    if years.warnings:
+        await handle_warnings(years.warnings, context.bot, update.effective_chat.id)
+    if years.error:
+        await handle_error(years.error, context.bot, update.effective_chat.id)
+        return
+    years = years.result
+
+    keyword = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(f'default', callback_data=f'set_year_0')]] +
+        [
+            [InlineKeyboardButton(f'{year}', callback_data=f'set_year_{year}')]
+            for year in years
+        ]
+
+    )
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='select year', reply_markup=keyword)
+
+
 async def get_grade_distribution(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = database.get_user_by_id(update.effective_chat.id)
     if not user:
@@ -378,6 +402,7 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('get_upcoming_exams', get_upcoming_exams))
     application.add_handler(CommandHandler('get_grade_distribution', get_grade_distribution))
     application.add_handler(CommandHandler('register_class', register_class))
+    application.add_handler(CommandHandler('set_year', set_year))
 
     application.add_handler(login_info_handler)
     application.add_handler(change_password_handler)
