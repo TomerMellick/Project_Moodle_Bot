@@ -121,6 +121,10 @@ class Internet:
                 return self.orbit_res
             self.orbit_res.warnings.append(Internet.Warning.CHANGE_PASSWORD)
 
+        if self.user.year:
+            inputs = self.__get_hidden_inputs(orbit_website.text)
+            self.__post(Internet.__MAIN_URL, payload_data=inputs)
+
         self.orbit_res = Res(True, self.orbit_res.warnings, None)
         return self.orbit_res
 
