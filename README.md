@@ -32,4 +32,5 @@ update_schedule - update the schedule
 get_notebook - get notebook file  
 get_upcoming_exams - get all upcoming exams  
 get_grade_distribution - get distribution for specific grade  
-change_password - change password in the orbit website  
+change_password - change password in the orbit website
+set_year - set the year of the user
