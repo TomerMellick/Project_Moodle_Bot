@@ -1,3 +1,4 @@
+import functools
 from enum import Enum
 from urllib.parse import urlencode, quote
 from collections import namedtuple
@@ -45,6 +46,32 @@ documents_file_name = {
     Document.GRADES_SHEET: 'grades_sheet.pdf',
     Document.ENGLISH_LEVEL: 'english_level.pdf'
 }
+
+
+def required_decorator(required_function):
+    """
+    decorator for needed function to works
+    :param required_function:
+    :return:
+    """
+
+    def actual_decorator(function):
+        f"""
+        decorator for function that need `{required_function}` function to work   
+        :param function: the warped function
+        :return: the final function
+        """
+
+        @functools.wraps(function)
+        def actual_function(self, *args, **kwargs):
+            res, warnings, error = required_function(self)
+            if error:
+                return Res(False, warnings[:], error)
+            return function(self, res, warnings[:], *args, **kwargs)
+
+        return actual_function
+
+    return actual_decorator
 
 
 class Internet:
@@ -128,20 +155,13 @@ class Internet:
         self.orbit_res = Res(True, self.orbit_res.warnings, None)
         return self.orbit_res
 
-    def connect_moodle(self) -> Res:
+    @required_decorator(connect_orbit)
+    def connect_moodle(self, _, warnings) -> Res:
         """
         connect to moodle website
         :return: is the method successfully connect to moodle
         """
         if self.moodle_res.result:
-            return self.moodle_res
-
-        res, warnings, error = self.connect_orbit()
-
-        warnings = warnings[:]
-
-        if not res:
-            self.moodle_res = Res(False, warnings, error)
             return self.moodle_res
 
         moodle_session = self.__get(Internet.__CONNECT_MOODLE_URL)
@@ -161,13 +181,11 @@ class Internet:
         self.moodle_res = Res(True, warnings, None)
         return self.moodle_res
 
-    def get_years(self) -> Res:
+    @required_decorator(connect_orbit)
+    def get_years(self, _, warnings) -> Res:
         """
         get all the years from that can be picked
         """
-        res, warnings, error = self.connect_orbit()
-        if error:
-            return Res(False, warnings, error)
         website = self.__get(Internet.__MAIN_URL)
         years_regex = '<select name="ctl00\\$cmbActiveYear".*?</select'
         year_regex = 'value="([0-9]*?)"'
@@ -175,20 +193,13 @@ class Internet:
         years = re.findall(year_regex, years, re.DOTALL)
         return Res(years, warnings, None)
 
-    def get_unfinished_events(self, last_date: datetime = None) -> Res:
+    @required_decorator(connect_moodle)
+    def get_unfinished_events(self, _, warnings, last_date: datetime = None) -> Res:
         """
         get undefined events from the moodle website
-
-        :param: last_date: events that past that date filtered out of the of
+        :param last_date: events that past that date filtered out of the of
         :return: the last undefined events or None if something go wrong
         """
-        res, warnings, error = self.connect_moodle()
-
-        warnings = warnings[:]
-
-        if not res:
-            return Res(None, warnings, error)
-
         moodle_website = self.__get(Internet.__MY_MOODLE)
 
         if moodle_website.status_code != 200:
@@ -229,13 +240,14 @@ class Internet:
             data = list(filter(lambda event: event.end_time <= last_date, data))
         return Res(data, warnings, None)
 
-    def get_lessons(self, text: Optional[str] = None) -> Res:
-        warnings = []
+    @required_decorator(connect_orbit)
+    def get_lessons(self, _, warnings, text: Optional[str] = None) -> Res:
+        """
+        get lesson that can be registered
+        :param text: the website output as text if None, the function open the page
+        :return: List of lessons
+        """
         if not text:
-            res, warnings, error = self.connect_orbit()
-            if not res:
-                return Res(False, warnings, error)
-
             website = self.__get(Internet.__SET_SCHEDULE_URL)
             inputs = self.__get_hidden_inputs(website.text)
             last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
@@ -251,21 +263,17 @@ class Internet:
 
         return Res(lessons, warnings, None)
 
-    def get_classes(self) -> Res:
+    @required_decorator(get_lessons)
+    def get_classes(self, lessons, warnings) -> Res:
         """
         get all class available via orbit
         :return: all class available via orbit (as set)
         """
-        lessons, warnings, error = self.get_lessons()
-        if not lessons:
-            return Res(False, warnings, error)
         classes = {lesson[2].split('-')[-1] for lesson in lessons}
-        return Res(classes, warnings, error)
+        return Res(classes, warnings, None)
 
-    def register_for_class(self, class_name: str):
-        lessons, warnings, error = self.get_lessons()
-        if not lessons:
-            return Res(False, warnings, error)
+    @required_decorator(get_lessons)
+    def register_for_class(self, lessons, warnings, class_name: str):
         website = self.__get(Internet.__SET_SCHEDULE_URL)
         last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
                                website.text,
@@ -300,15 +308,13 @@ class Internet:
                 break
         return Res((registered_lessons, unregistered_lessons), warnings, None)
 
-    def get_document(self, document: Document) -> Res:
+    @required_decorator(connect_orbit)
+    def get_document(self, _, warnings, document: Document) -> Res:
         """
         get specific document from the moodle website
         :param document: the document needed from the orbit website
         :return: a raw data of the document (bytes)
         """
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
 
         website = self.__get(Internet.__GET_DOCUMENT_URL)
         if website.status_code != 200:
@@ -321,14 +327,12 @@ class Internet:
         return Res(self.__post(Internet.__GET_DOCUMENT_URL,
                                payload_data=hidden_inputs).content, warnings, None)
 
-    def get_grades(self) -> Res:
+    @required_decorator(connect_orbit)
+    def get_grades(self, _, warnings) -> Res:
         """
         get all orbits grades and connect the orbit with username and password if not connected yet
         :return: list of Grades: the grades of the user
         """
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
 
         website = self.__get(Internet.__GRADE_LIST_URL)
         if website.status_code != 200:
@@ -350,27 +354,23 @@ class Internet:
 
         return Res(grades, warnings, None)
 
-    def __get_exam_website(self) -> Res:
+    @required_decorator(connect_orbit)
+    def __get_exam_website(self, _, warnings) -> Res:
         """
         get the website of the exams from the orbit
         :return: Respond of the website
         """
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
         website = self.__get(Internet.__EXAMS_URL)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
         return Res(website, warnings, None)
 
-    def get_all_exams(self) -> Res:
+    @required_decorator(__get_exam_website)
+    def get_all_exams(self, website, warnings) -> Res:
         """
         get list of the user's exams
         :return: list of the user's exams
         """
-        website, warnings, error = self.__get_exam_website()
-        if not website:
-            return Res(website, warnings, error)
         inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
         website = self.__post(Internet.__EXAMS_URL, payload_data=inputs)
@@ -407,15 +407,13 @@ class Internet:
 
         return Res(all_exams, warnings, None)
 
-    def get_exam_notebook(self, number):
+    @required_decorator(__get_exam_website)
+    def get_exam_notebook(self, website, warnings, number):
         """
         get notebook of specific exam
         :param number: the number of the notebook (Exam.notebook_url)
         :return: a row data of the file
         """
-        website, warnings, error = self.__get_exam_website()
-        if not website:
-            return Res(website, warnings, error)
         inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$btnOkAgreement'] = 'אישור'
         inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
@@ -427,7 +425,8 @@ class Internet:
         return Res(self.__post(Internet.__EXAMS_URL,
                                payload_data=inputs).content, warnings, None)
 
-    def change_password(self, new_password: str):
+    @required_decorator(connect_orbit)
+    def change_password(self, _, __, new_password: str):
         """
         change password in the orbit website
         :param new_password: the new password the user want
@@ -435,9 +434,6 @@ class Internet:
         """
         if self.user.password == new_password:
             return Res(False, [], Internet.Error.OLD_EQUAL_NEW_PASSWORD)
-        res, warnings, error = self.connect_orbit()
-        if not res and error != Internet.Error.CHANGE_PASSWORD:
-            return Res(False, warnings, error)
         website = self.__get(Internet.__CHANGE_PASSWORD_URL)
         inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$ContentPlaceHolder1$edtCurrentPassword'] = self.user.password
@@ -449,16 +445,13 @@ class Internet:
             return Res(False, [], Internet.Error.OLD_EQUAL_NEW_PASSWORD)
         return Res(True, [], None)
 
-    def get_grade_distribution(self, grade_distribution: str):
+    @required_decorator(connect_orbit)
+    def get_grade_distribution(self, _, warnings, grade_distribution: str):
         """
         get the grade distribution of specific subject
         :param grade_distribution: the Grade.grade_distribution of the wanted subject
         :return: GradesDistribution
         """
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
-
         website = self.__get(Internet.__GRADE_LIST_URL)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
