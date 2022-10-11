@@ -1,17 +1,52 @@
 import datetime
 from typing import List
+from enum import Enum, auto
 
 import telegram
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, filters, \
-    CallbackQueryHandler
-
-import internet
-from internet import Internet, Document, documents_heb_name, documents_file_name
-from enum import Enum, auto
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from src import database
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, \
+    filters, CallbackQueryHandler
+
+from internet import Internet, Document, documents_heb_name, documents_file_name
+import database
 
 users = {}
+
+
+def get_user(f):
+    async def function(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user = database.get_user_by_id(update.effective_chat.id)
+        if not user:
+            await enter_data(context.bot, update.effective_chat.id)
+            return
+        return await f(user, update, context, *args, **kwargs)
+
+    return function
+
+
+def internet_func(internet_function, value_on_error=None, btn_name=None, btn_value_func=None):
+    def decorator(function):
+        @get_user
+        async def actual_function(user: database.User, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+            if btn_name:
+                btn_value = update.callback_query.data[len(btn_name):]
+                if btn_value_func:
+                    btn_value = btn_value_func(btn_value)
+                res = internet_function(Internet(user), btn_value)
+            else:
+                res = internet_function(Internet(user))
+
+            if res.warnings:
+                await handle_warnings(res.warnings, context.bot, update.effective_chat.id)
+            if res.error:
+                await handle_error(res.error, context.bot, update.effective_chat.id)
+                return value_on_error
+            return await function(user, res.result, update, context)
+
+        return actual_function
+
+    return decorator
 
 
 class GetUser(Enum):
@@ -69,19 +104,9 @@ async def change_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GetUser.GET_PASSWORD
 
 
-async def get_new_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    new_password = Internet(data.user_name, data.password).change_password(update.message.text)
-    if new_password.warnings:
-        await handle_warnings(new_password.warnings, context.bot, update.effective_chat.id)
-    if new_password.error:
-        await handle_error(new_password.error, context.bot, update.effective_chat.id)
-        return GetUser.GET_PASSWORD
-    database.add_user(update.effective_chat.id, data.user_name, update.message.text)
+@internet_func(Internet.change_password, value_on_error=GetUser.GET_PASSWORD)
+async def get_new_password(user, _, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    database.add_user(update.effective_chat.id, user.user_name, update.message.text)
     await context.bot.send_message(update.effective_chat.id, text="password changed successfully")
     return ConversationHandler.END
 
@@ -97,7 +122,7 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     password = update.message.text
     database.add_user(update.effective_chat.id, username, password)
     await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
-    if Internet(username, password).connect_orbit().result:
+    if Internet(database.User(update.effective_chat.id, username, password, 0, 0)).connect_orbit().result:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Thanks")
         return ConversationHandler.END
     else:
@@ -107,19 +132,8 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return GetUser.GET_USERNAME
 
 
-async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    grades = Internet(data[1], data[2]).get_grades()
-    if grades.warnings:
-        await handle_warnings(grades.warnings, context.bot, update.effective_chat.id)
-    if grades.error:
-        await handle_error(grades.error, context.bot, update.effective_chat.id)
-        return
-    grades = grades.result
-
+@internet_func(Internet.get_grades)
+async def get_grades(_, grades, update: Update, context: ContextTypes.DEFAULT_TYPE):
     sum_grades = 0
     num_of_units = 0
     for grade in grades:
@@ -134,19 +148,20 @@ async def get_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text + f'\n\n ממוצע: {avg}')
 
 
-async def get_grade_distribution(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    grades = Internet(data.user_name, data.password).get_grades()
-    if grades.warnings:
-        await handle_warnings(grades.warnings, context.bot, update.effective_chat.id)
-    if grades.error:
-        await handle_error(grades.error, context.bot, update.effective_chat.id)
-        return
-    grades = grades.result
+@internet_func(Internet.get_years)
+async def set_year(_, years, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyword = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(f'default', callback_data=f'set_year_0')]] +
+        [
+            [InlineKeyboardButton(f'{year}', callback_data=f'set_year_{year}')]
+            for year in years
+        ]
+    )
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='select year', reply_markup=keyword)
 
+
+@internet_func(Internet.get_grades)
+async def get_grade_distribution(_, grades, update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyword = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton(f'{grade.name}', callback_data=f'grade_distribution_{grade.grade_distribution}')]
@@ -156,18 +171,8 @@ async def get_grade_distribution(update: Update, context: ContextTypes.DEFAULT_T
     await context.bot.send_message(chat_id=update.effective_chat.id, text='select subject', reply_markup=keyword)
 
 
-async def get_unfinished_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    events = Internet(data[1], data[2]).get_unfinished_events()
-    if events.warnings:
-        await handle_warnings(events.warnings, context.bot, update.effective_chat.id)
-    if events.error:
-        await handle_error(events.error, context.bot, update.effective_chat.id)
-        return
-    events = events.result
+@internet_func(Internet.get_unfinished_events)
+async def get_unfinished_events(_, events, update: Update, context: ContextTypes.DEFAULT_TYPE):
     events_text = '\n---------------------------------------------\n'.join(f'{event.name}\n'
                                                                            f'{event.course_name}\n'
                                                                            f'{event.end_time}\n'
@@ -197,18 +202,11 @@ async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
                                    reply_markup=keyboard)
 
 
-async def call_back_get_grade_distribution_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    grade_distribution_id = update.callback_query.data[len('grade_distribution_'):]
-    grade_distribution = Internet(data.user_name, data.password).get_grade_distribution(grade_distribution_id)
-    if grade_distribution.warnings:
-        await handle_warnings(grade_distribution.warnings, context.bot, update.effective_chat.id)
-    if grade_distribution.error:
-        await handle_error(grade_distribution.error, context.bot, update.effective_chat.id)
-        return
+@internet_func(Internet.get_grade_distribution, btn_name='grade_distribution_')
+async def call_back_get_grade_distribution_button(_,
+                                                  grade_distribution,
+                                                  update: Update,
+                                                  context: ContextTypes.DEFAULT_TYPE):
     grade_distribution = grade_distribution.result
     text = f'ציונך: {grade_distribution.grade}\n' \
            f'ממוצע: {grade_distribution.average}\n' \
@@ -218,18 +216,8 @@ async def call_back_get_grade_distribution_button(update: Update, context: Conte
     await context.bot.send_photo(update.effective_chat.id, grade_distribution.image)
 
 
-async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    exams = Internet(data.user_name, data.password).get_all_exams()
-    if exams.warnings:
-        await handle_warnings(exams.warnings, context.bot, update.effective_chat.id)
-    if exams.error:
-        await handle_error(exams.error, context.bot, update.effective_chat.id)
-        return
-    exams = exams.result
+@internet_func(Internet.get_all_exams)
+async def get_notebook(_, exams, update: Update, context: ContextTypes.DEFAULT_TYPE):
     exams = [exam for exam in exams if exam.notebook_url]
     exams.sort(key=lambda a: a.time_start, reverse=True)
     keyboard = InlineKeyboardMarkup(
@@ -241,18 +229,8 @@ async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                    reply_markup=keyboard)
 
 
-async def get_upcoming_exams(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    exams = Internet(data.user_name, data.password).get_all_exams()
-    if exams.warnings:
-        await handle_warnings(exams.warnings, context.bot, update.effective_chat.id)
-    if exams.error:
-        await handle_error(exams.error, context.bot, update.effective_chat.id)
-        return
-    exams = exams.result
+@internet_func(Internet.get_all_exams)
+async def get_upcoming_exams(_, exams, update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.datetime.now()
     exams = [exam for exam in exams if exam.time_start > now]
     exams.sort(key=lambda a: a.time_start)
@@ -263,38 +241,15 @@ async def get_upcoming_exams(update: Update, context: ContextTypes.DEFAULT_TYPE)
                                    text=text)
 
 
-async def register_class(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-
-    classes = Internet(data.user_name, data.password).get_classes()
-    if classes.warnings:
-        await handle_warnings(classes.warnings, context.bot, update.effective_chat.id)
-    if classes.error:
-        await handle_error(classes.error, context.bot, update.effective_chat.id)
-        return
-    classes = classes.result
+@internet_func(Internet.get_classes)
+async def register_class(_, classes, update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton(my_class, callback_data=f'register_class_{my_class}')] for my_class in classes])
     await context.bot.send_message(chat_id=update.effective_chat.id, text="select class", reply_markup=keyboard)
 
 
-async def call_back_register_class_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    my_class = update.callback_query.data[len('register_class_'):]
-    res = Internet(data.user_name, data.password).register_for_class(my_class)
-
-    if res.warnings:
-        await handle_warnings(res.warnings, context.bot, update.effective_chat.id)
-    if res.error:
-        await handle_error(res.error, context.bot, update.effective_chat.id)
-        return
-    res = res.result
+@internet_func(Internet.register_for_class, btn_name='register_class_')
+async def call_back_register_class_button(_, res, update: Update, context: ContextTypes.DEFAULT_TYPE):
     register_message = '\n-------\n'.join(f'{lesson[1]}-{lesson[2]}' for lesson in res[0])
     if register_message:
         register_message = "register to:\n" + register_message
@@ -305,46 +260,32 @@ async def call_back_register_class_button(update: Update, context: ContextTypes.
     await context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
-async def call_back_notebook_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
-    notebook_id = int(update.callback_query.data[len('notebook_'):])
-    in_user = Internet(data.user_name, data.password)
-    notebook = in_user.get_exam_notebook(notebook_id)
-    if notebook.warnings:
-        await handle_warnings(notebook.warnings, context.bot, update.effective_chat.id)
-    if notebook.error:
-        await handle_error(notebook.error, context.bot, update.effective_chat.id)
-        return
-    notebook = notebook.result
+@internet_func(Internet.get_exam_notebook, btn_name='notebook_', btn_value_func=int)
+async def call_back_notebook_button(_, notebook, update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_document(update.effective_chat.id, notebook, filename=f'notebook.pdf')
 
 
-async def call_back_document_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = database.get_user_by_id(update.effective_chat.id)
-    if not data:
-        await enter_data(context.bot, update.effective_chat.id)
-        return
+@internet_func(Internet.get_document, btn_name='document_', btn_value_func=lambda x: Document(int(x)))
+async def call_back_document_button(_, doc_value, update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = Document(int(update.callback_query.data[len('document_'):]))
-    doc_value = Internet(data[1], data[2]).get_document(doc)
-    if doc_value.warnings:
-        await handle_warnings(doc_value.warnings, context.bot, update.effective_chat.id)
-    if doc_value.error:
-        await handle_error(doc_value.error, context.bot, update.effective_chat.id)
-        return
-    doc_value = doc_value.result
     await context.bot.send_document(update.effective_chat.id, doc_value, filename=documents_file_name[doc])
 
 
 async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    value_int = int(update.callback_query.data[len('schedule_')])
+    value_int = int(update.callback_query.data[len('schedule_'):])
     value_text = ['never', 'once a day', 'once a week'][value_int]
     database.update_schedule(update.effective_chat.id, value_int)
 
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text=f"schedule message to unfinished events set to `{value_text}`")
+
+
+async def call_back_set_year_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    value_int = int(update.callback_query.data[len('set_year_'):])
+    database.update_year(update.effective_chat.id, value_int)
+
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=f"year set to `{value_int if value_int else 'default'}`")
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -379,6 +320,7 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('get_upcoming_exams', get_upcoming_exams))
     application.add_handler(CommandHandler('get_grade_distribution', get_grade_distribution))
     application.add_handler(CommandHandler('register_class', register_class))
+    application.add_handler(CommandHandler('set_year', set_year))
 
     application.add_handler(login_info_handler)
     application.add_handler(change_password_handler)
@@ -386,7 +328,7 @@ def start_telegram_bot(token: str):
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
     application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
-    application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
+    application.add_handler(CallbackQueryHandler(call_back_set_year_button, pattern=r'^set_year_'))
     application.add_handler(CallbackQueryHandler(call_back_register_class_button, pattern=r'^register_class_'))
 
     application.add_handler(CallbackQueryHandler(call_back_get_grade_distribution_button,

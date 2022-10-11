@@ -1,3 +1,4 @@
+import functools
 from enum import Enum
 from urllib.parse import urlencode, quote
 from collections import namedtuple
@@ -7,6 +8,8 @@ import requests
 import html
 import json
 import re
+
+import database
 
 Grade = namedtuple('Grade', 'name units grade grade_distribution')
 Exam = namedtuple('Exam', 'name number time_start time_end mark notebook_url room')
@@ -45,6 +48,32 @@ documents_file_name = {
 }
 
 
+def required_decorator(required_function):
+    """
+    decorator for needed function to works
+    :param required_function:
+    :return:
+    """
+
+    def actual_decorator(function):
+        f"""
+        decorator for function that need `{required_function}` function to work   
+        :param function: the warped function
+        :return: the final function
+        """
+
+        @functools.wraps(function)
+        def actual_function(self, *args, **kwargs):
+            res, warnings, error = required_function(self)
+            if error:
+                return Res(False, warnings[:], error)
+            return function(self, res, warnings[:], *args, **kwargs)
+
+        return actual_function
+
+    return actual_decorator
+
+
 class Internet:
     """
     This class communicate with orbit and moodle.
@@ -63,12 +92,11 @@ class Internet:
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
     __MOODLE_SERVICE_URL = f'{__MOODLE_URL}/lib/ajax/service.php'
 
-    def __init__(self, username: str, password: str):
+    def __init__(self, user: database.User):
         self.session = requests.session()
         self.moodle_res = Res(False, [], None)
         self.orbit_res = Res(False, [], None)
-        self.username = username
-        self.password = password
+        self.user = user
 
     class Error(Enum):
         ORBIT_DOWN = 0
@@ -97,11 +125,11 @@ class Internet:
             self.orbit_res = Res(False, [], Internet.Error.ORBIT_DOWN)
             return self.orbit_res
 
-        login_data = Internet.__get_hidden_inputs(orbit_login_website.text)
+        login_data = self.__get_hidden_inputs(orbit_login_website.text)
         login_data.update(
             {
-                'edtUsername': self.username,
-                'edtPassword': self.password,
+                'edtUsername': self.user.user_name,
+                'edtPassword': self.user.password,
                 '__LASTFOCUS': '',
                 '__EVENTTARGET': '',
                 '__EVENTARGUMENT': '',
@@ -120,23 +148,20 @@ class Internet:
                 return self.orbit_res
             self.orbit_res.warnings.append(Internet.Warning.CHANGE_PASSWORD)
 
+        if self.user.year:
+            inputs = self.__get_hidden_inputs(orbit_website.text)
+            self.__post(Internet.__MAIN_URL, payload_data=inputs)
+
         self.orbit_res = Res(True, self.orbit_res.warnings, None)
         return self.orbit_res
 
-    def connect_moodle(self) -> Res:
+    @required_decorator(connect_orbit)
+    def connect_moodle(self, _, warnings) -> Res:
         """
         connect to moodle website
         :return: is the method successfully connect to moodle
         """
         if self.moodle_res.result:
-            return self.moodle_res
-
-        res, warnings, error = self.connect_orbit()
-
-        warnings = warnings[:]
-
-        if not res:
-            self.moodle_res = Res(False, warnings, error)
             return self.moodle_res
 
         moodle_session = self.__get(Internet.__CONNECT_MOODLE_URL)
@@ -156,20 +181,25 @@ class Internet:
         self.moodle_res = Res(True, warnings, None)
         return self.moodle_res
 
-    def get_unfinished_events(self, last_date: datetime = None) -> Res:
+    @required_decorator(connect_orbit)
+    def get_years(self, _, warnings) -> Res:
+        """
+        get all the years from that can be picked
+        """
+        website = self.__get(Internet.__MAIN_URL)
+        years_regex = '<select name="ctl00\\$cmbActiveYear".*?</select'
+        year_regex = 'value="([0-9]*?)"'
+        years = re.findall(years_regex, website.text, re.DOTALL)[0]
+        years = re.findall(year_regex, years, re.DOTALL)
+        return Res(years, warnings, None)
+
+    @required_decorator(connect_moodle)
+    def get_unfinished_events(self, _, warnings, last_date: datetime = None) -> Res:
         """
         get undefined events from the moodle website
-
-        :param: last_date: events that past that date filtered out of the of
+        :param last_date: events that past that date filtered out of the of
         :return: the last undefined events or None if something go wrong
         """
-        res, warnings, error = self.connect_moodle()
-
-        warnings = warnings[:]
-
-        if not res:
-            return Res(None, warnings, error)
-
         moodle_website = self.__get(Internet.__MY_MOODLE)
 
         if moodle_website.status_code != 200:
@@ -210,15 +240,16 @@ class Internet:
             data = list(filter(lambda event: event.end_time <= last_date, data))
         return Res(data, warnings, None)
 
-    def get_lessons(self, text: Optional[str] = None) -> Res:
-        warnings = []
+    @required_decorator(connect_orbit)
+    def get_lessons(self, _, warnings, text: Optional[str] = None) -> Res:
+        """
+        get lesson that can be registered
+        :param text: the website output as text if None, the function open the page
+        :return: List of lessons
+        """
         if not text:
-            res, warnings, error = self.connect_orbit()
-            if not res:
-                return Res(False, warnings, error)
-
             website = self.__get(Internet.__SET_SCHEDULE_URL)
-            inputs = Internet.__get_hidden_inputs(website.text)
+            inputs = self.__get_hidden_inputs(website.text)
             last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
                                    website.text,
                                    re.DOTALL)[-1]
@@ -232,26 +263,22 @@ class Internet:
 
         return Res(lessons, warnings, None)
 
-    def get_classes(self) -> Res:
+    @required_decorator(get_lessons)
+    def get_classes(self, lessons, warnings) -> Res:
         """
         get all class available via orbit
         :return: all class available via orbit (as set)
         """
-        lessons, warnings, error = self.get_lessons()
-        if not lessons:
-            return Res(False, warnings, error)
         classes = {lesson[2].split('-')[-1] for lesson in lessons}
-        return Res(classes, warnings, error)
+        return Res(classes, warnings, None)
 
-    def register_for_class(self, class_name: str):
-        lessons, warnings, error = self.get_lessons()
-        if not lessons:
-            return Res(False, warnings, error)
+    @required_decorator(get_lessons)
+    def register_for_class(self, lessons, warnings, class_name: str):
         website = self.__get(Internet.__SET_SCHEDULE_URL)
         last_year = re.findall(r'ctl00\$ContentPlaceHolder1\$gvBalance\$GridRow[0-9]+?\$btnBalanceDataDetails',
                                website.text,
                                re.DOTALL)[-1]
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs[f'{last_year}.x'] = 0
         inputs[f'{last_year}.y'] = 0
         website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
@@ -267,7 +294,7 @@ class Internet:
                     continue
                 if lesson[2].split('-')[-1] != class_name:
                     continue
-                inputs = Internet.__get_hidden_inputs(website.text)
+                inputs = self.__get_hidden_inputs(website.text)
                 inputs[f'{lesson[0]}.x'] = 1
                 inputs[f'{lesson[0]}.y'] = 1
                 website = self.__post(Internet.__SET_SCHEDULE_URL, payload_data=inputs)
@@ -279,17 +306,15 @@ class Internet:
                 do_stuff = True
                 lessons = self.get_lessons(website.text)[0]
                 break
-        return Res((registered_lessons, unregistered_lessons),warnings,None)
+        return Res((registered_lessons, unregistered_lessons), warnings, None)
 
-    def get_document(self, document: Document) -> Res:
+    @required_decorator(connect_orbit)
+    def get_document(self, _, warnings, document: Document) -> Res:
         """
         get specific document from the moodle website
         :param document: the document needed from the orbit website
         :return: a raw data of the document (bytes)
         """
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
 
         website = self.__get(Internet.__GET_DOCUMENT_URL)
         if website.status_code != 200:
@@ -298,18 +323,16 @@ class Internet:
         hidden_inputs['ctl00$ContentPlaceHolder1$cmbDivision'] = 1
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.x'] = 1
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.y'] = 1
-        print(hidden_inputs)
+
         return Res(self.__post(Internet.__GET_DOCUMENT_URL,
                                payload_data=hidden_inputs).content, warnings, None)
 
-    def get_grades(self) -> Res:
+    @required_decorator(connect_orbit)
+    def get_grades(self, _, warnings) -> Res:
         """
         get all orbits grades and connect the orbit with username and password if not connected yet
         :return: list of Grades: the grades of the user
         """
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
 
         website = self.__get(Internet.__GRADE_LIST_URL)
         if website.status_code != 200:
@@ -324,35 +347,31 @@ class Internet:
             grades += Internet.__get_grade_from_page(website.text, page)
             page += 1
             if page <= last_page:
-                inputs = Internet.__get_hidden_inputs(website.text)
+                inputs = self.__get_hidden_inputs(website.text)
                 inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
                 inputs['__EVENTARGUMENT'] = f'Page${page}'
                 website = self.__post(Internet.__GRADE_LIST_URL, payload_data=inputs)
 
         return Res(grades, warnings, None)
 
-    def __get_exam_website(self) -> Res:
+    @required_decorator(connect_orbit)
+    def __get_exam_website(self, _, warnings) -> Res:
         """
         get the website of the exams from the orbit
         :return: Respond of the website
         """
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
         website = self.__get(Internet.__EXAMS_URL)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
         return Res(website, warnings, None)
 
-    def get_all_exams(self) -> Res:
+    @required_decorator(__get_exam_website)
+    def get_all_exams(self, website, warnings) -> Res:
         """
         get list of the user's exams
         :return: list of the user's exams
         """
-        website, warnings, error = self.__get_exam_website()
-        if not website:
-            return Res(website, warnings, error)
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
         website = self.__post(Internet.__EXAMS_URL, payload_data=inputs)
         all_exams_text = re.findall(
@@ -388,40 +407,36 @@ class Internet:
 
         return Res(all_exams, warnings, None)
 
-    def get_exam_notebook(self, number):
+    @required_decorator(__get_exam_website)
+    def get_exam_notebook(self, website, warnings, number):
         """
         get notebook of specific exam
         :param number: the number of the notebook (Exam.notebook_url)
         :return: a row data of the file
         """
-        website, warnings, error = self.__get_exam_website()
-        if not website:
-            return Res(website, warnings, error)
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$btnOkAgreement'] = 'אישור'
         inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
         website = self.__post(Internet.__EXAMS_URL, payload_data=inputs)
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs['ctl00$tbMain$ctl03$ddlExamDateRangeFilter'] = 1
         inputs[f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{number}$btnDownload.x'] = 1
         inputs[f'ctl00$ContentPlaceHolder1$gvStudentAssignmentTermList$GridRow{number}$btnDownload.y'] = 1
         return Res(self.__post(Internet.__EXAMS_URL,
                                payload_data=inputs).content, warnings, None)
 
-    def change_password(self, new_password: str):
+    @required_decorator(connect_orbit)
+    def change_password(self, _, __, new_password: str):
         """
         change password in the orbit website
         :param new_password: the new password the user want
         :return: is the password changed successfully
         """
-        if self.password == new_password:
+        if self.user.password == new_password:
             return Res(False, [], Internet.Error.OLD_EQUAL_NEW_PASSWORD)
-        res, warnings, error = self.connect_orbit()
-        if not res and error != Internet.Error.CHANGE_PASSWORD:
-            return Res(False, warnings, error)
         website = self.__get(Internet.__CHANGE_PASSWORD_URL)
-        inputs = Internet.__get_hidden_inputs(website.text)
-        inputs['ctl00$ContentPlaceHolder1$edtCurrentPassword'] = self.password
+        inputs = self.__get_hidden_inputs(website.text)
+        inputs['ctl00$ContentPlaceHolder1$edtCurrentPassword'] = self.user.password
         inputs['ctl00$ContentPlaceHolder1$edtNewPassword1'] = new_password
         inputs['ctl00$ContentPlaceHolder1$edtNewPassword2'] = new_password
         inputs['ctl00$ContentPlaceHolder1$btnSave'] = 'עדכן'
@@ -430,29 +445,26 @@ class Internet:
             return Res(False, [], Internet.Error.OLD_EQUAL_NEW_PASSWORD)
         return Res(True, [], None)
 
-    def get_grade_distribution(self, grade_distribution: str):
+    @required_decorator(connect_orbit)
+    def get_grade_distribution(self, _, warnings, grade_distribution: str):
         """
         get the grade distribution of specific subject
         :param grade_distribution: the Grade.grade_distribution of the wanted subject
         :return: GradesDistribution
         """
-        res, warnings, error = self.connect_orbit()
-        if not res:
-            return Res(False, warnings, error)
-
         website = self.__get(Internet.__GRADE_LIST_URL)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
         grade_distribution = grade_distribution.split('_')
 
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$gvGradesList'
         inputs['__EVENTARGUMENT'] = f'Page${grade_distribution[0]}'
         website = self.__post(Internet.__GRADE_LIST_URL, payload_data=inputs)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
 
-        inputs = Internet.__get_hidden_inputs(website.text)
+        inputs = self.__get_hidden_inputs(website.text)
         inputs[f'ctl00'
                f'$ContentPlaceHolder1'
                f'$gvGradesList'
@@ -548,8 +560,7 @@ class Internet:
             get_payload = ''
         return self.session.post(f"{url}{get_payload}", data=payload_data, json=payload_json)
 
-    @staticmethod
-    def __get_hidden_inputs(text: str) -> dict:
+    def __get_hidden_inputs(self, text: str) -> dict:
         """
         get all hidden inputs from the website (include the year)
         :param text: the html code
@@ -557,9 +568,13 @@ class Internet:
         """
         hidden_input_regex = r"<input type=\"hidden\" name=\"(.*?)\" id=\".*?\" value=\"(.*?)\" \/>"
         hidden_inputs = re.findall(hidden_input_regex, text, re.DOTALL)
-        year_regex = '<select name="ctl00\\$cmbActiveYear".*?<option selected="selected" value="([0-9]*?)"'
-        year = re.findall(year_regex, text, re.DOTALL)
-        if year:
-            year = int(year[0])
-            hidden_inputs.append(('ctl00$cmbActiveYear', year))
+        if self.user.year:
+            hidden_inputs.append(('ctl00$cmbActiveYear', self.user.year))
+        else:
+            year_regex = '<select name="ctl00\\$cmbActiveYear".*?<option selected="selected" value="([0-9]*?)"'
+            year = re.findall(year_regex, text, re.DOTALL)
+            if year:
+                year = int(year[0])
+                hidden_inputs.append(('ctl00$cmbActiveYear', year))
+
         return dict(hidden_inputs)
