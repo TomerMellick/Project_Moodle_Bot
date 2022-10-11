@@ -88,7 +88,7 @@ class Internet:
     __EXAMS_URL = f'{__ORBIT_URL}/StudentAssignmentTermList.aspx'
     __SET_SCHEDULE_URL = f'{__ORBIT_URL}/CreateStudentWeeklySchedule.aspx'
 
-    __MOODLE_URL = 'https://mowgli.hac.ac.il/'
+    __MOODLE_URL = 'https://mowgli.hac.ac.il'
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
     __MOODLE_SERVICE_URL = f'{__MOODLE_URL}/lib/ajax/service.php'
 
