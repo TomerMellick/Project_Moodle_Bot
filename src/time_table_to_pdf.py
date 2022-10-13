@@ -108,7 +108,6 @@ class HebrewTimeTablePDF(FPDF):
 
     def draw_time_table(self, time_table_data):
         days, day_indexer = self.get_days(time_table_data)
-        print(days)
         colum_width = self.epw / (len(days) + 1)
         line_height = self.font_size * 2.5
 

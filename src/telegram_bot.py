@@ -132,6 +132,27 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return GetUser.GET_USERNAME
 
 
+async def get_time_table(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyword = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(f'סמסטר א', callback_data=f'time_table_1'),
+                InlineKeyboardButton(f'סמסטר ב', callback_data=f'time_table_2'),
+                InlineKeyboardButton(f'סמסטר קיץ', callback_data=f'time_table_3')
+            ]
+        ]
+    )
+    await context.bot.send_message(chat_id=update.effective_chat.id, text='select semester', reply_markup=keyword)
+
+
+@internet_func(Internet.get_time_table, btn_name='time_table_', btn_value_func=int)
+async def call_back_time_table_button(_, res, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if res:
+        await context.bot.send_document(update.effective_chat.id, res[1], filename=res[0])
+    else:
+        await context.bot.send_message(update.effective_chat.id, "can't find the time table")
+
+
 @internet_func(Internet.get_grades)
 async def get_grades(_, grades, update: Update, context: ContextTypes.DEFAULT_TYPE):
     sum_grades = 0
@@ -321,6 +342,7 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('get_grade_distribution', get_grade_distribution))
     application.add_handler(CommandHandler('register_class', register_class))
     application.add_handler(CommandHandler('set_year', set_year))
+    application.add_handler(CommandHandler('get_time_table', get_time_table))
 
     application.add_handler(login_info_handler)
     application.add_handler(change_password_handler)
@@ -330,7 +352,7 @@ def start_telegram_bot(token: str):
     application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))
     application.add_handler(CallbackQueryHandler(call_back_set_year_button, pattern=r'^set_year_'))
     application.add_handler(CallbackQueryHandler(call_back_register_class_button, pattern=r'^register_class_'))
-
+    application.add_handler(CallbackQueryHandler(call_back_time_table_button, pattern=r'^time_table_'))
     application.add_handler(CallbackQueryHandler(call_back_get_grade_distribution_button,
                                                  pattern=r'^grade_distribution_'))
 
