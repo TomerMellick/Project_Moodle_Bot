@@ -10,6 +10,7 @@ import json
 import re
 
 import database
+from time_table_to_pdf import HebrewTimeTablePDF
 
 Grade = namedtuple('Grade', 'name units grade grade_distribution')
 Exam = namedtuple('Exam', 'name number time_start time_end mark notebook_url room')
@@ -87,8 +88,9 @@ class Internet:
     __GRADE_LIST_URL = f'{__ORBIT_URL}//StudentGradesList.aspx'
     __EXAMS_URL = f'{__ORBIT_URL}/StudentAssignmentTermList.aspx'
     __SET_SCHEDULE_URL = f'{__ORBIT_URL}/CreateStudentWeeklySchedule.aspx'
+    __TIME_TABLE_URL = f'{__ORBIT_URL}/StudentPeriodSchedule.aspx'
 
-    __MOODLE_URL = 'https://mowgli.hac.ac.il/'
+    __MOODLE_URL = 'https://mowgli.hac.ac.il'
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
     __MOODLE_SERVICE_URL = f'{__MOODLE_URL}/lib/ajax/service.php'
 
@@ -499,6 +501,49 @@ class Internet:
             warnings=warnings,
             error=None
         )
+
+    @required_decorator(connect_orbit)
+    def get_time_table(self, _, warnings, semester: int = 1):
+        website = self.__get(Internet.__TIME_TABLE_URL)
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+
+        inputs = self.__get_hidden_inputs(website.text)
+        inputs['ctl00$tbMain$ctl03$ddlPeriodTypeFilter2'] = semester
+        website = self.__post(Internet.__TIME_TABLE_URL, payload_data=inputs)
+
+        ans = re.findall(f"<tr id=\"ContentPlaceHolder1_PeriodScheduleA_gvPeriodSchedule\" class=\"GridRow\">.*?"
+                         "<td.*?>(.*?)</td>"
+                         "<td.*?>(.*?)</td>"
+                         "<td.*?>(.*?)</td>"
+                         "<td.*?>.*?</td>"
+                         "<td.*?>.*?</td>"
+                         "<td.*?>.*?</td>"
+                         "<td.*?>.*?</td>"
+                         "<td.*?>.*?</td>"
+                         "<td.*?>(.*?)</td>"
+                         "<td.*?>(.*?)</td>", website.text, re.DOTALL)
+        ans = [
+            (
+                my_class[2].replace('<br>', '\n'),
+                ["א'", "ב'", "ג'", "ד'", "ה'", "ו'"].index(my_class[0]),
+                int(my_class[1][0:2]) + int(my_class[1][3:5]) / 60,
+                int(my_class[1][6:8]) + int(my_class[1][9:11]) / 60,
+                my_class[3].replace('<br>', '\n') if my_class[3] != '&nbsp;' else '',
+                my_class[4].replace('<br>', '\n') if my_class[4] != '&nbsp;' else ''
+            )
+
+            for my_class in ans
+
+            if my_class[0] != '&nbsp;' and my_class[1] != '&nbsp;'
+        ]
+        if ans:
+            return Res((
+                ["semesterA.pdf", "semesterB.pdf", "semesterSummer.pdf"][semester - 1],
+                HebrewTimeTablePDF(ans).get_output()
+            ), warnings, None)
+
+        return Res(None, warnings, None)
 
     @staticmethod
     def __get_grade_from_page(page: str, page_number: int) -> List[Grade]:
