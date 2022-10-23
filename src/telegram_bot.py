@@ -228,7 +228,6 @@ async def call_back_get_grade_distribution_button(_,
                                                   grade_distribution,
                                                   update: Update,
                                                   context: ContextTypes.DEFAULT_TYPE):
-    grade_distribution = grade_distribution.result
     text = f'ציונך: {grade_distribution.grade}\n' \
            f'ממוצע: {grade_distribution.average}\n' \
            f'ס.ת: {grade_distribution.standard_deviation}\n' \
