@@ -24,7 +24,7 @@ def get_user(f):
     return function
 
 
-def internet_func(internet_function, value_on_error=None, btn_name=None, btn_value_func=None):
+def internet_func(internet_function, value_on_error=None, btn_name=None, btn_value_func=None, get_message=False):
     def decorator(function):
         @get_user
         async def actual_function(user: database.User, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -34,6 +34,8 @@ def internet_func(internet_function, value_on_error=None, btn_name=None, btn_val
                 if btn_value_func:
                     btn_value = btn_value_func(btn_value)
                 res = internet_function(Internet(user), btn_value)
+            elif get_message:
+                res = internet_function(Internet(user), update.message.text)
             else:
                 res = internet_function(Internet(user))
 
@@ -104,7 +106,7 @@ async def change_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GetUser.GET_PASSWORD
 
 
-@internet_func(Internet.change_password, value_on_error=GetUser.GET_PASSWORD)
+@internet_func(Internet.change_password, value_on_error=GetUser.GET_PASSWORD, get_message=True)
 async def get_new_password(user, _, update: Update, context: ContextTypes.DEFAULT_TYPE):
     database.add_user(update.effective_chat.id, user.user_name, update.message.text)
     await context.bot.send_message(update.effective_chat.id, text="password changed successfully")
