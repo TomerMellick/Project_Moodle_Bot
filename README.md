@@ -24,11 +24,15 @@ This bot is an easy interface to Orbit's and Moodle's websites.
 
 ## Commands ##
 start - start the telegram bot, wait for username and password  
+set_year - set the year of the user
 update_user - update the user's info (ask again for username and password)  
 get_grades - get all the grades of the student (include average grade)  
 get_unfinished_events - get all unfinished events (from moodle)  
 get_document - get document from the moodle  
 update_schedule - update the schedule  
 get_notebook - get notebook file  
-get_upcoming_exams - get all upcoming exams  
-register_period - register to a period 
+get_upcoming_exams - get all upcoming exams
+get_grade_distribution - get distribution for specific grade  
+change_password - change password in the orbit website  
+get_time_table - get the timetable as a pdf file  
+register_period - register to a period
