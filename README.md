@@ -6,8 +6,9 @@ This bot is an easy interface to Orbit's and Moodle's websites.
 ![GitHub](https://img.shields.io/github/license/TomerMellick/Project_Moodle_Bot)
 
 ## How to Use ##
-1. join the bot via [this link](https://t.me/moodle_hadassah_bot).
-2. send to him your Orbit's username and password.
+1. join the main bot via [this link](https://t.me/moodle_hadassah_bot)  
+  or the develop bot via [this link](https://t.me/hadassah_develop_bot).
+2. send to him your Orbit's username and password. (username is your id number and password is not necessarily your Hadassa's Google password)
 3. use any of its commands 
 
 ## How to Open Your Own Bot ##
