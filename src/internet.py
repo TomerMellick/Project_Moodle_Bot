@@ -23,9 +23,9 @@ class Document(Enum):
     STUDENT_PERMIT = 1
     TUITION_FEE_APPROVAL = 2
     REGISTRATION_CONFIRMATION = 3
-    GRADES_SHEET_E = 6
-    GRADES_SHEET = 7
-    ENGLISH_LEVEL = 15
+    GRADES_SHEET_E = 4
+    GRADES_SHEET = 5
+    ENGLISH_LEVEL = 13
 
 
 documents_heb_name = {
