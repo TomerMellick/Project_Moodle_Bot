@@ -3,3 +3,4 @@ python-telegram-bot~=20.0a2
 schedule~=1.1.0
 Pillow~=9.3.0
 fpdf2~=2.5.7
+urllib3~=1.26.14

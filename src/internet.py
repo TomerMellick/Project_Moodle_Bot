@@ -4,12 +4,15 @@ from urllib.parse import urlencode, quote
 from collections import namedtuple
 from datetime import datetime
 from typing import Union, List, Optional
+import urllib3
 import requests
 import html
 import json
 import re
 import database
 from time_table_to_pdf import HebrewTimeTablePDF
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 Grade = namedtuple('Grade', 'name units grade grade_distribution')
 Exam = namedtuple('Exam', 'name period time_start time_end mark room notebook_url register cancel_register number')
@@ -612,7 +615,7 @@ class Internet:
             payload = '&' + urlencode(payload, quote_via=quote)
         else:
             payload = ''
-        return self.session.get(f"{url}{payload}")
+        return self.session.get(f"{url}{payload}", verify=False)
 
     def __post(self, url: str,
                payload_data: dict = None,
@@ -631,7 +634,7 @@ class Internet:
             get_payload = '?' + urlencode(get_payload, quote_via=quote)
         else:
             get_payload = ''
-        return self.session.post(f"{url}{get_payload}", data=payload_data, json=payload_json)
+        return self.session.post(f"{url}{get_payload}", data=payload_data, json=payload_json, verify=False)
 
     def __get_hidden_inputs(self, text: str) -> dict:
         """
