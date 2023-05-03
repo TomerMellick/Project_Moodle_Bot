@@ -195,12 +195,17 @@ async def get_grade_distribution(_, grades, update: Update, context: ContextType
     )
     await context.bot.send_message(chat_id=update.effective_chat.id, text='select subject', reply_markup=keyword)
 
+def format_delta_time(dtime: datetime.timedelta):
+    return f'{dtime.days} days, {dtime.seconds // 3600} hours, {(dtime.seconds // 60) % 60} minutes'
+
 
 @internet_func(Internet.get_unfinished_events)
 async def get_unfinished_events(_, events, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.datetime.now()
     events_text = '\n---------------------------------------------\n'.join(f'{event.name}\n'
-                                                                           f'{event.course_name}\n'
+                                                                           f'{event.course_short_name}\n'
                                                                            f'{event.end_time}\n'
+                                                                           f'{format_delta_time(event.end_time - now)}\n'
                                                                            f'{event.url}'
                                                                            for event in events)
 
