@@ -16,7 +16,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 Grade = namedtuple('Grade', 'name units grade grade_distribution')
 Exam = namedtuple('Exam', 'name period time_start time_end mark room notebook_url register cancel_register number')
-Event = namedtuple('event', 'name course_name course_id end_time url')
+Event = namedtuple('event', 'course_short_name name course_name course_id end_time url')
 Res = namedtuple('Result', 'result warnings error')
 GradesDistribution = namedtuple('GradesDistribution', 'grade average standard_deviation position image')
 
@@ -233,7 +233,8 @@ class Internet:
         data = json.loads(unfinished_events.text)
         if data[0]['error']:
             return Res(None, warnings, Internet.Error.BOT_ERROR)
-        data = [Event(name=event['name'],
+        data = [Event(course_short_name=get_short_name(event['course']['shortname']),
+                      name=event['name'],
                       course_name=event['course']['shortname'],
                       course_id=event['course']['id'],
                       end_time=datetime.fromtimestamp(event['timesort']),
@@ -654,3 +655,17 @@ class Internet:
                 hidden_inputs.append(('ctl00$cmbActiveYear', year))
 
         return dict(hidden_inputs)
+
+def get_short_name(name: str) -> str:
+    """
+    get the short name of the subject
+    :param name: the name of the subject
+    :return: the short name of the subject
+    """
+    i = 0
+    while i < len(name) and (name[i].isdigit() or name[i] == '-' or name[i] == ' '):
+        i += 1
+
+    return name[i:]
+
+
