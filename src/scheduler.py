@@ -9,7 +9,10 @@ import telegram_bot
 
 
 async def async_send_messages(token, all_users, time_scope):
-    await asyncio.gather(*[send_scheduled_event(token, user, time_scope) for user in all_users])
+    try:
+        await asyncio.gather(*[send_scheduled_event(token, user, time_scope) for user in all_users])
+    except Exception as e:
+        print(e)
 
 
 def once_a_day(token: str):
@@ -33,7 +36,7 @@ async def send_scheduled_event(token: str, user: database.User, time_scope: date
     :return:
     """
     bot = telegram.Bot(token)
-    unfinished_events = internet.Internet(user.user_name, user.password).get_unfinished_events(time_scope)
+    unfinished_events = internet.Internet(user).get_unfinished_events(time_scope)
     if not unfinished_events:
         return
     if unfinished_events.warnings:
@@ -61,6 +64,7 @@ def schedule_messages(token: str):
     """
     schedule.every().day.at("06:00").do(once_a_day, token)
     schedule.every().sunday.at("06:00").do(once_a_week, token)
+    #schedule.every().minute.do(once_a_day, token)
 
     while True:
         schedule.run_pending()

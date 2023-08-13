@@ -2,7 +2,6 @@ import datetime
 from typing import List
 from enum import Enum, auto
 
-
 import telegram
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, \
@@ -195,6 +194,7 @@ async def get_grade_distribution(_, grades, update: Update, context: ContextType
     )
     await context.bot.send_message(chat_id=update.effective_chat.id, text='select subject', reply_markup=keyword)
 
+
 def format_delta_time(dtime: datetime.timedelta):
     return f'{dtime.days} days, {dtime.seconds // 3600} hours, {(dtime.seconds // 60) % 60} minutes'
 
@@ -223,14 +223,15 @@ async def update_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    internet = Internet(database.get_user_by_id(update.effective_chat.id))
+    doc_list = internet.get_documents_list()
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(name, callback_data=f'document_{doc_num.value}')] for doc_num, name in
-         documents_heb_name.items()])
+        [[InlineKeyboardButton(name, callback_data=f'document_{index}')] for index, name in
+         enumerate(doc_list)])
 
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="choose  file to download",
                                    reply_markup=keyboard)
-
 
 
 # async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -272,6 +273,7 @@ async def get_notebook(_, exams, update: Update, context: ContextTypes.DEFAULT_T
                                    text="choose notebook to download",
                                    reply_markup=keyboard)
 
+
 @internet_func(Internet.get_all_exams)
 async def register_period(_, exams, update: Update, context: ContextTypes.DEFAULT_TYPE):
     exams.sort(key=lambda a: a.time_start, reverse=False)
@@ -288,7 +290,6 @@ async def register_period(_, exams, update: Update, context: ContextTypes.DEFAUL
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text="register or cancel register",
                                    reply_markup=keyboard)
-
 
 
 # @internet_func(Internet.register_exam, btn_name='register_period_', btn_value_func=lambda x: Document(int(x)))
@@ -319,7 +320,8 @@ async def call_back_register_button(update: Update, context: ContextTypes.DEFAUL
                                                  callback_data=f'register_period_0_{exam.number}')])
     keyboard = InlineKeyboardMarkup(buttons)
 
-    await context.bot.edit_message_reply_markup(update.effective_chat.id, update.effective_message.id, reply_markup=keyboard)
+    await context.bot.edit_message_reply_markup(update.effective_chat.id, update.effective_message.id,
+                                                reply_markup=keyboard)
 
 
 @internet_func(Internet.get_all_exams)
@@ -358,10 +360,10 @@ async def call_back_notebook_button(_, notebook, update: Update, context: Contex
     await context.bot.send_document(update.effective_chat.id, notebook, filename=f'notebook.pdf')
 
 
-@internet_func(Internet.get_document, btn_name='document_', btn_value_func=lambda x: Document(int(x)))
+@internet_func(Internet.get_document, btn_name='document_', btn_value_func=int)
 async def call_back_document_button(_, doc_value, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    doc = Document(int(update.callback_query.data[len('document_'):]))
-    await context.bot.send_document(update.effective_chat.id, doc_value, filename=documents_file_name[doc])
+    # doc = Document(int(update.callback_query.data[len('document_'):]))
+    await context.bot.send_document(update.effective_chat.id, doc_value, filename="document.pdf")
 
 
 async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -371,6 +373,7 @@ async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAUL
 
     await context.bot.send_message(chat_id=update.effective_chat.id,
                                    text=f"schedule message to unfinished events set to `{value_text}`")
+
 
 async def call_back_set_year_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     value_int = int(update.callback_query.data[len('set_year_'):])
@@ -383,7 +386,6 @@ async def call_back_set_year_button(update: Update, context: ContextTypes.DEFAUL
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(update.effective_chat.id, text="operation canceled")
     return ConversationHandler.END
-
 
 
 login_info_handler = ConversationHandler(

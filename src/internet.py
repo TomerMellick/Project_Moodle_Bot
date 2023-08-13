@@ -11,6 +11,8 @@ import json
 import re
 import database
 from time_table_to_pdf import HebrewTimeTablePDF
+from functools import lru_cache
+from Bsoup import parse_html_table
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -19,6 +21,7 @@ Exam = namedtuple('Exam', 'name period time_start time_end mark room notebook_ur
 Event = namedtuple('event', 'course_short_name name course_name course_id end_time url')
 Res = namedtuple('Result', 'result warnings error')
 GradesDistribution = namedtuple('GradesDistribution', 'grade average standard_deviation position image')
+DOCUMENTADRESS = 'https://live.or-bit.net/hadassah/DocumentGenerationPage.aspx'
 
 
 class Document(Enum):
@@ -96,6 +99,7 @@ class Internet:
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
     __MOODLE_SERVICE_URL = f'{__MOODLE_URL}/lib/ajax/service.php'
 
+    @lru_cache(maxsize=10)
     def __init__(self, user: database.User):
         self.session = requests.session()
         self.moodle_res = Res(False, [], None)
@@ -314,9 +318,10 @@ class Internet:
         return Res((registered_lessons, unregistered_lessons), warnings, None)
 
     @required_decorator(connect_orbit)
-    def get_document(self, _, warnings, document: Document) -> Res:
+    def get_document(self, _, warnings, document) -> Res:
         """
         get specific document from the moodle website
+        :param _:
         :param document: the document needed from the orbit website
         :return: a raw data of the document (bytes)
         """
@@ -326,11 +331,19 @@ class Internet:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
         hidden_inputs = self.__get_hidden_inputs(website.text)
         hidden_inputs['ctl00$ContentPlaceHolder1$cmbDivision'] = 1
-        hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.x'] = 1
-        hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document.value}$ibDownloadDocument.y'] = 1
+        hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document}$ibDownloadDocument.x'] = 1
+        hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document}$ibDownloadDocument.y'] = 1
 
         return Res(self.__post(Internet.__GET_DOCUMENT_URL,
                                payload_data=hidden_inputs).content, warnings, None)
+
+    @required_decorator(connect_orbit)
+    def get_documents_list(self, _, warnings) -> Res:
+        website = self.__get(DOCUMENTADRESS)
+        if website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+        doc_list = parse_html_table(website.text)
+        return doc_list
 
     @required_decorator(connect_orbit)
     def get_grades(self, _, warnings) -> Res:
@@ -656,6 +669,7 @@ class Internet:
 
         return dict(hidden_inputs)
 
+
 def get_short_name(name: str) -> str:
     """
     get the short name of the subject
@@ -667,5 +681,3 @@ def get_short_name(name: str) -> str:
         i += 1
 
     return name[i:]
-
-
