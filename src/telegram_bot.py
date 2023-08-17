@@ -229,24 +229,11 @@ async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
         [[InlineKeyboardButton(name, callback_data=f'document_{index}')] for index, name in
          enumerate(doc_list)])
 
-    await context.bot.send_message(chat_id=update.effective_chat.id,
-                                   text="choose  file to download",
-                                   reply_markup=keyboard)
+    msg_id = await context.bot.send_message(chat_id=update.effective_chat.id,
+                                            text="choose  file to download",
+                                            reply_markup=keyboard)
 
 
-# async def get_notebook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     data = database.get_user_by_id(update.effective_chat.id)
-#     if not data:
-#         await enter_data(context.bot, update.effective_chat.id)
-#         return
-#     exams = Internet(data.user_name, data.password).get_all_exams()
-#     if exams.warnings:
-#         await handle_warnings(exams.warnings, context.bot, update.effective_chat.id)
-#     if exams.error:
-#         await handle_error(exams.error, context.bot, update.effective_chat.id)
-#         return
-#     exams = exams.result
-#     exams = [exam for exam in exams if exam.notebook]
 
 @internet_func(Internet.get_grade_distribution, btn_name='grade_distribution_')
 async def call_back_get_grade_distribution_button(_,
@@ -362,7 +349,7 @@ async def call_back_notebook_button(_, notebook, update: Update, context: Contex
 
 @internet_func(Internet.get_document, btn_name='document_', btn_value_func=int)
 async def call_back_document_button(_, doc_value, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # doc = Document(int(update.callback_query.data[len('document_'):]))
+    await context.bot.deleteMessage(update.effective_chat.id, update.callback_query.message.message_id)
     await context.bot.send_document(update.effective_chat.id, doc_value, filename="document.pdf")
 
 
@@ -418,10 +405,8 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('register_class', register_class))
     application.add_handler(CommandHandler('set_year', set_year))
     application.add_handler(CommandHandler('get_time_table', get_time_table))
-
     application.add_handler(login_info_handler)
     application.add_handler(change_password_handler)
-
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))
     application.add_handler(CallbackQueryHandler(call_back_schedule_button, pattern=r'^schedule_'))
     application.add_handler(CallbackQueryHandler(call_back_notebook_button, pattern=r'^notebook_'))

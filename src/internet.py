@@ -12,7 +12,7 @@ import re
 import database
 from time_table_to_pdf import HebrewTimeTablePDF
 from functools import lru_cache
-from Bsoup import parse_html_table
+from Bsoup import parse_documents_table
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -339,11 +339,17 @@ class Internet:
 
     @required_decorator(connect_orbit)
     def get_documents_list(self, _, warnings) -> Res:
+        """
+        get all documents from the orbit website
+        :param _:
+        :param warnings:
+        :return:
+        """
         website = self.__get(DOCUMENTADRESS)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
-        doc_list = parse_html_table(website.text)
-        return doc_list
+        return parse_documents_table(website.text)
+
 
     @required_decorator(connect_orbit)
     def get_grades(self, _, warnings) -> Res:

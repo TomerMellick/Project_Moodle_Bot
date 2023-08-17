@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 
 
-def parse_html_table(html):
+def parse_documents_table(html):
     # Create a BeautifulSoup object
     soup = BeautifulSoup(html, 'html.parser')
 
@@ -20,9 +20,9 @@ def parse_html_table(html):
         cell_texts = [cell.get_text(strip=True) for cell in cells]
         cell_values.append(cell_texts)
 
-    # Print the extracted cell values
-    buttonsList = []
+    # extract the documents names
+    buttons_list = []
     for row in cell_values:
-        buttonsList.append(row[1])
-    buttonsList.pop(0)
-    return buttonsList
+        buttons_list.append(row[1])
+    buttons_list.pop(0)
+    return buttons_list

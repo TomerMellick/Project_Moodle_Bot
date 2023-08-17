@@ -64,7 +64,6 @@ def schedule_messages(token: str):
     """
     schedule.every().day.at("06:00").do(once_a_day, token)
     schedule.every().sunday.at("06:00").do(once_a_week, token)
-    #schedule.every().minute.do(once_a_day, token)
 
     while True:
         schedule.run_pending()
