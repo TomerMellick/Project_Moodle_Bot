@@ -36,7 +36,7 @@ async def send_scheduled_event(token: str, user: database.User, time_scope: date
     :return:
     """
     bot = telegram.Bot(token)
-    unfinished_events = internet.Internet(user).get_unfinished_events(time_scope)
+    unfinished_events = internet.Internet.create(user).get_unfinished_events(time_scope)
     if not unfinished_events:
         return
     if unfinished_events.warnings:

@@ -33,11 +33,11 @@ def internet_func(internet_function, value_on_error=None, btn_name=None, btn_val
                 btn_value = update.callback_query.data[len(btn_name):]
                 if btn_value_func:
                     btn_value = btn_value_func(btn_value)
-                res = internet_function(Internet(user), btn_value)
+                res = internet_function(Internet.create(user), btn_value)
             elif get_message:
-                res = internet_function(Internet(user), update.message.text)
+                res = internet_function(Internet.create(user), update.message.text)
             else:
-                res = internet_function(Internet(user))
+                res = internet_function(Internet.create(user))
 
             if res.warnings:
                 await handle_warnings(res.warnings, context.bot, update.effective_chat.id)
@@ -65,7 +65,8 @@ async def enter_data(bot: telegram.Bot, chat_id: int):
 async def handle_warnings(warning: List[Internet.Warning], bot: telegram.Bot, chat_id: int):
     if Internet.Warning.CHANGE_PASSWORD in warning:
         await bot.send_message(chat_id=chat_id,
-                               text="warning: please change your username and password at the orbit website")
+                               text="warning: please change your username and password at the orbit website"
+                                    "or use /change_password command")
 
 
 async def handle_error(error: Internet.Error, bot: telegram.Bot, chat_id: int):
@@ -125,7 +126,7 @@ async def get_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     password = update.message.text
     database.add_user(update.effective_chat.id, username, password)
     await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
-    if Internet(database.User(update.effective_chat.id, username, password, 0, 0)).connect_orbit().result:
+    if Internet.create(database.User(update.effective_chat.id, username, password, 0, 0)).connect_orbit().result:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Thanks")
         return ConversationHandler.END
     else:
@@ -208,7 +209,8 @@ async def get_unfinished_events(_, events, update: Update, context: ContextTypes
                                                                            f'{format_delta_time(event.end_time - now)}\n'
                                                                            f'{event.url}'
                                                                            for event in events)
-
+    if not events_text:
+        events_text = 'no unfinished events'
     await context.bot.send_message(chat_id=update.effective_chat.id, text=events_text)
 
 
@@ -223,16 +225,15 @@ async def update_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_document_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    internet = Internet(database.get_user_by_id(update.effective_chat.id))
+    internet = Internet.create(database.get_user_by_id(update.effective_chat.id))
     doc_list = internet.get_documents_list()
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton(name, callback_data=f'document_{index}')] for index, name in
          enumerate(doc_list)])
 
     msg_id = await context.bot.send_message(chat_id=update.effective_chat.id,
-                                            text="choose  file to download",
+                                            text="choose file to download",
                                             reply_markup=keyboard)
-
 
 
 @internet_func(Internet.get_grade_distribution, btn_name='grade_distribution_')
@@ -288,11 +289,11 @@ async def call_back_register_button(update: Update, context: ContextTypes.DEFAUL
         return
     register_data = update.callback_query.data[len('register_period_'):].split('_')
     register_data[0] = register_data[0] == '1'
-    res = Internet(data).register_exam(register_data[1], register_data[0])
+    res = Internet.create(data).register_exam(register_data[1], register_data[0])
     if res.error:
         await handle_error(res.error, context.bot, update.effective_chat.id)
         return
-    exams = Internet(data).get_all_exams()
+    exams = Internet.create(data).get_all_exams()
     if exams.error:
         await handle_error(exams.error, context.bot, update.effective_chat.id)
         return
@@ -350,7 +351,7 @@ async def call_back_notebook_button(_, notebook, update: Update, context: Contex
 @internet_func(Internet.get_document, btn_name='document_', btn_value_func=int)
 async def call_back_document_button(_, doc_value, update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.deleteMessage(update.effective_chat.id, update.callback_query.message.message_id)
-    await context.bot.send_document(update.effective_chat.id, doc_value, filename="document.pdf")
+    await context.bot.send_document(update.effective_chat.id, doc_value[0], filename=doc_value[1] + ".pdf")
 
 
 async def call_back_schedule_button(update: Update, context: ContextTypes.DEFAULT_TYPE):

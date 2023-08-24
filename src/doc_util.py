@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup
+from deep_translator import GoogleTranslator
 
 
 def parse_documents_table(html):
@@ -25,4 +26,9 @@ def parse_documents_table(html):
     for row in cell_values:
         buttons_list.append(row[1])
     buttons_list.pop(0)
+
     return buttons_list
+
+
+def translate_doc(name):
+    return GoogleTranslator(source='auto', target='en').translate(name).lower().strip().replace(' ', '_')

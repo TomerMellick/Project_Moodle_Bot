@@ -12,7 +12,7 @@ import re
 import database
 from time_table_to_pdf import HebrewTimeTablePDF
 from functools import lru_cache
-from Bsoup import parse_documents_table
+import doc_util
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -99,12 +99,20 @@ class Internet:
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
     __MOODLE_SERVICE_URL = f'{__MOODLE_URL}/lib/ajax/service.php'
 
-    @lru_cache(maxsize=10)
     def __init__(self, user: database.User):
         self.session = requests.session()
         self.moodle_res = Res(False, [], None)
         self.orbit_res = Res(False, [], None)
         self.user = user
+
+    @lru_cache(maxsize=10)
+    @staticmethod
+    def create(user: database.User):
+        """
+        create a new Internet object
+        :param user: the user that the object will use
+        """
+        return Internet(user)
 
     class Error(Enum):
         ORBIT_DOWN = 0
@@ -124,7 +132,8 @@ class Internet:
         if this object already connected the method do nothing (and return the res of the first time tried to connect)
         :return: is the method successfully connect to orbit
         """
-        if self.orbit_res.result:
+
+        if self.__get(Internet.__MAIN_URL).url == Internet.__MAIN_URL:
             return self.orbit_res
 
         orbit_login_website = self.__get(Internet.__LOGIN_URL)
@@ -169,7 +178,7 @@ class Internet:
         connect to moodle website
         :return: is the method successfully connect to moodle
         """
-        if self.moodle_res.result:
+        if self.__get(Internet.__MY_MOODLE).url == Internet.__MY_MOODLE:
             return self.moodle_res
 
         moodle_session = self.__get(Internet.__CONNECT_MOODLE_URL)
@@ -333,9 +342,9 @@ class Internet:
         hidden_inputs['ctl00$ContentPlaceHolder1$cmbDivision'] = 1
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document}$ibDownloadDocument.x'] = 1
         hidden_inputs[f'ctl00$ContentPlaceHolder1$gvDocuments$GridRow{document}$ibDownloadDocument.y'] = 1
-
-        return Res(self.__post(Internet.__GET_DOCUMENT_URL,
-                               payload_data=hidden_inputs).content, warnings, None)
+        en_name = doc_util.translate_doc(doc_util.parse_documents_table(website.text)[document])
+        return Res((self.__post(Internet.__GET_DOCUMENT_URL,
+                                payload_data=hidden_inputs).content, en_name), warnings, None)
 
     @required_decorator(connect_orbit)
     def get_documents_list(self, _, warnings) -> Res:
@@ -348,8 +357,7 @@ class Internet:
         website = self.__get(DOCUMENTADRESS)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
-        return parse_documents_table(website.text)
-
+        return doc_util.parse_documents_table(website.text)
 
     @required_decorator(connect_orbit)
     def get_grades(self, _, warnings) -> Res:
