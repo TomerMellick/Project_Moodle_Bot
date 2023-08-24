@@ -1,8 +1,8 @@
-requests
-python-telegram-bot
-schedule
-Pillow
-fpdf2
-urllib3
-beautifulsoup4
-deep-translator
+requests~=2.31.0
+python-telegram-bot ~= 20.4
+schedule~=1.1.0
+Pillow~=9.3.0
+fpdf2 ~= 2.5.7
+urllib3~=1.26.16
+beautifulsoup4~=4.12.2
+deep-translator ~= 1.11.4
