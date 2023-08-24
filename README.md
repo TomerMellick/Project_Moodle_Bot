@@ -20,7 +20,7 @@ This bot is an easy interface to Orbit's and Moodle's websites.
 
 
 ## Requirements ##
-1. python 3.9
+1. python 3.10
 2. all packages from `requirements.txt`
 
 ## Commands ##
