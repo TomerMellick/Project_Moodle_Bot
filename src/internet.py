@@ -98,6 +98,7 @@ class Internet:
     __MOODLE_URL = 'https://mowgli.hac.ac.il'
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
     __MOODLE_SERVICE_URL = f'{__MOODLE_URL}/lib/ajax/service.php'
+    __MOODLE_REDIRECT_URL = f'{__MOODLE_URL}/?redirect=0'
 
     def __init__(self, user: database.User):
         self.session = requests.session()
@@ -192,7 +193,7 @@ class Internet:
 
         redirect_url = reg[1]
         moodle_website = self.__get(redirect_url)
-        if moodle_website.status_code != 200 or moodle_website.url != Internet.__MY_MOODLE:
+        if moodle_website.status_code != 200 or moodle_website.url != Internet.__MOODLE_REDIRECT_URL:
             self.moodle_res = Res(False, warnings, Internet.Error.MOODLE_DOWN)
             return self.moodle_res
         self.moodle_res = Res(True, warnings, None)
