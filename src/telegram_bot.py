@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, ConversationHandler, MessageHandler, \
     filters, CallbackQueryHandler
 
-from internet import Internet, Document, documents_heb_name, documents_file_name
+from internet import Internet
 import database
 
 users = {}
@@ -171,6 +171,15 @@ async def get_grades(_, grades, update: Update, context: ContextTypes.DEFAULT_TY
 
     grades_text = '\n'.join(f'{grade.name} - {grade.units} - {grade.grade}' for grade in grades if grade.grade != '')
     await context.bot.send_message(chat_id=update.effective_chat.id, text=grades_text + f'\n\n ממוצע: {avg}')
+
+
+@internet_func(Internet.get_student_permit)
+async def get_student_permit(_, data, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=update.effective_chat.id,
+                                   text=
+                                   "לאישור יקח עד שבוע להישלח לך למייל\n"
+                                   "המייל: " + data[0] + "\n"
+                                   )
 
 
 @internet_func(Internet.get_years)
@@ -406,6 +415,7 @@ def start_telegram_bot(token: str):
     application.add_handler(CommandHandler('register_class', register_class))
     application.add_handler(CommandHandler('set_year', set_year))
     application.add_handler(CommandHandler('get_time_table', get_time_table))
+    application.add_handler(CommandHandler('get_student_permit', get_student_permit))
     application.add_handler(login_info_handler)
     application.add_handler(change_password_handler)
     application.add_handler(CallbackQueryHandler(call_back_document_button, pattern=r'^document_'))

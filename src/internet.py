@@ -21,37 +21,37 @@ Exam = namedtuple('Exam', 'name period time_start time_end mark room notebook_ur
 Event = namedtuple('event', 'course_short_name name course_name course_id end_time url')
 Res = namedtuple('Result', 'result warnings error')
 GradesDistribution = namedtuple('GradesDistribution', 'grade average standard_deviation position image')
-DOCUMENTADRESS = 'https://live.or-bit.net/hadassah/DocumentGenerationPage.aspx'
 
 
-class Document(Enum):
-    STUDENT_PERMIT_E = 0
-    STUDENT_PERMIT = 1
-    TUITION_FEE_APPROVAL = 2
-    REGISTRATION_CONFIRMATION = 3
-    GRADES_SHEET_E = 4
-    GRADES_SHEET = 5
-    ENGLISH_LEVEL = 13
-
-
-documents_heb_name = {
-    Document.STUDENT_PERMIT_E: 'v12 אישור לימודים באנגלית לסטודנט',
-    Document.STUDENT_PERMIT: 'V45- אישור לימודים מפורט',
-    Document.TUITION_FEE_APPROVAL: 'אישור גובה שכר לימוד',
-    Document.REGISTRATION_CONFIRMATION: 'אישור הרשמה',
-    Document.GRADES_SHEET_E: 'גליון ציונים באנגלית',
-    Document.GRADES_SHEET: 'גליון ציונים',
-    Document.ENGLISH_LEVEL: 'רמת אנגלית'
-}
-documents_file_name = {
-    Document.STUDENT_PERMIT_E: 'student_permit_english.pdf',
-    Document.STUDENT_PERMIT: 'student_permit.pdf',
-    Document.TUITION_FEE_APPROVAL: 'tuition_fee_approval.pdf',
-    Document.REGISTRATION_CONFIRMATION: 'registration_confirmation.pdf',
-    Document.GRADES_SHEET_E: 'english_grades_sheet.pdf',
-    Document.GRADES_SHEET: 'grades_sheet.pdf',
-    Document.ENGLISH_LEVEL: 'english_level.pdf'
-}
+#
+# class Document(Enum):
+#     STUDENT_PERMIT_E = 0
+#     STUDENT_PERMIT = 1
+#     TUITION_FEE_APPROVAL = 2
+#     REGISTRATION_CONFIRMATION = 3
+#     GRADES_SHEET_E = 4
+#     GRADES_SHEET = 5
+#     ENGLISH_LEVEL = 13
+#
+#
+# documents_heb_name = {
+#     Document.STUDENT_PERMIT_E: 'v12 אישור לימודים באנגלית לסטודנט',
+#     Document.STUDENT_PERMIT: 'V45- אישור לימודים מפורט',
+#     Document.TUITION_FEE_APPROVAL: 'אישור גובה שכר לימוד',
+#     Document.REGISTRATION_CONFIRMATION: 'אישור הרשמה',
+#     Document.GRADES_SHEET_E: 'גליון ציונים באנגלית',
+#     Document.GRADES_SHEET: 'גליון ציונים',
+#     Document.ENGLISH_LEVEL: 'רמת אנגלית'
+# }
+# documents_file_name = {
+#     Document.STUDENT_PERMIT_E: 'student_permit_english.pdf',
+#     Document.STUDENT_PERMIT: 'student_permit.pdf',
+#     Document.TUITION_FEE_APPROVAL: 'tuition_fee_approval.pdf',
+#     Document.REGISTRATION_CONFIRMATION: 'registration_confirmation.pdf',
+#     Document.GRADES_SHEET_E: 'english_grades_sheet.pdf',
+#     Document.GRADES_SHEET: 'grades_sheet.pdf',
+#     Document.ENGLISH_LEVEL: 'english_level.pdf'
+# }
 
 
 def required_decorator(required_function):
@@ -94,6 +94,7 @@ class Internet:
     __EXAMS_URL = f'{__ORBIT_URL}/StudentAssignmentTermList.aspx'
     __SET_SCHEDULE_URL = f'{__ORBIT_URL}/CreateStudentWeeklySchedule.aspx'
     __TIME_TABLE_URL = f'{__ORBIT_URL}/StudentPeriodSchedule.aspx'
+    __DOCUMENTS_URL = f'{__ORBIT_URL}/DocumentGenerationPage.aspx'
 
     __MOODLE_URL = 'https://mowgli.hac.ac.il'
     __MY_MOODLE = f'{__MOODLE_URL}/my/'
@@ -355,10 +356,47 @@ class Internet:
         :param warnings:
         :return:
         """
-        website = self.__get(DOCUMENTADRESS)
+        website = self.__get(self.__GET_DOCUMENT_URL)
         if website.status_code != 200:
             return Res(False, warnings, Internet.Error.BOT_ERROR)
         return doc_util.parse_documents_table(website.text)
+
+    @required_decorator(connect_orbit)
+    def get_student_permit(self, _, warnings) -> Res:
+        """
+        get student permit from the orbit website
+        it will send the document to the user's email
+        :return: tuple of mail and phone number
+        """
+        documents_website = self.__get("https://live.or-bit.net/hadassah/AdminRequestForms.aspx")
+        if documents_website.status_code != 200:
+            return Res(False, warnings, Internet.Error.BOT_ERROR)
+        inputs = self.__get_hidden_inputs(documents_website.text)
+        number = re.findall(r' value="(\d+?)">טפסים</option>', documents_website.text)[0]
+        print(number)
+        inputs['ctl00$ContentPlaceHolder1$cmbCategory'] = number
+        inputs['__EVENTTARGET'] = 'ctl00$ContentPlaceHolder1$cmbCategory'
+        inputs['__EVENTARGUMENT'] = ''
+        documents_website = self.__post("https://live.or-bit.net/hadassah/AdminRequestForms.aspx",
+                                        payload_data=inputs)
+        new_website = re.findall(r'אישור לימודים מפורט לסטודנטים פעילים.*?href="(.+?)"', documents_website.text, re.DOTALL)[0]
+        documents_website = self.__get(self.__ORBIT_URL + "/" + new_website)
+        inputs = self.__get_hidden_inputs(documents_website.text)
+        address = re.findall(r'name="ctl00\$ContentPlaceHolder1\$edtAddress" type="text" value="(.*?)"',
+                             documents_website.text, re.DOTALL)[0]
+        inputs['ctl00$ContentPlaceHolder1$edtAddress'] = address
+        email = re.findall(r'name="ctl00\$ContentPlaceHolder1\$edtEmail" type="text" value="(.*?)"',
+                           documents_website.text, re.DOTALL)[0]
+        inputs['ctl00$ContentPlaceHolder1$edtEmail'] = email
+        phone = re.findall(r'name="ctl00\$ContentPlaceHolder1\$edtTelephone" type="text" value="(.*?)"',
+                           documents_website.text, re.DOTALL)[0]
+        inputs['ctl00$ContentPlaceHolder1$edtTelephone'] = phone
+        inputs['ctl00$ContentPlaceHolder1$btnSave'] = 'הגשת בקשה'
+        inputs['__EVENTTARGET'] = ''
+        inputs['__EVENTARGUMENT'] = ''
+        documents_website = self.__post(self.__ORBIT_URL + "/" + new_website, payload_data=inputs)
+        return Res((email, phone), warnings, None)
+
 
     @required_decorator(connect_orbit)
     def get_grades(self, _, warnings) -> Res:
@@ -683,6 +721,10 @@ class Internet:
                 hidden_inputs.append(('ctl00$cmbActiveYear', year))
 
         return dict(hidden_inputs)
+
+    post = __post
+    get = __get
+    get_hidden_inputs = __get_hidden_inputs
 
 
 def get_short_name(name: str) -> str:
